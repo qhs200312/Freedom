@@ -1,0 +1,6 @@
+Natural Earth vector data
+Source: https://www.naturalearthdata.com/
+
+Natural Earth data is in the public domain. No permission is needed to use
+Natural Earth data. The bundled file is based on the 1:110m Admin 0 Countries
+GeoJSON dataset.

@@ -23,6 +23,8 @@ data class MainUiState(
     val traffic: TrafficSnapshot = TrafficSnapshot(),
     val geoLocation: GeoLocation? = null,
     val isLocating: Boolean = false,
+    val exitIpLatencyMs: Long? = null,
+    val exitIpFailed: Boolean = false,
     val locateTarget: LocateTarget? = null,
     val confirmRemove: Boolean = false,
     val doubleColumnDisplay: Boolean = false,
@@ -35,6 +37,7 @@ data class MainUiState(
 sealed interface MainAction {
     data object Initialize : MainAction
     data object RefreshGroups : MainAction
+    data object RefreshExitLocation : MainAction
     data object ToggleService : MainAction
     data class SetProxyMode(val mode: ProxyMode) : MainAction
     data object TestCurrentServer : MainAction

@@ -103,7 +103,7 @@ fun HomeDashboard(
             item { Spacer(Modifier.height(26.dp)) }
             item { TrafficDataCard(uiState = uiState) }
             item { DeviceStatusCards(uiState = uiState) }
-            item { ExitIpCard(uiState = uiState) }
+            item { ExitIpCard(uiState = uiState, onAction = onAction) }
             item {
                 HomeNodeList(
                     uiState = uiState,
@@ -155,6 +155,9 @@ private fun MapStatusPanel(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .clickable(enabled = !uiState.isLocating) {
+                    onAction(MainAction.RefreshExitLocation)
+                }
                 .padding(top = contentTopPadding + 8.dp, start = 24.dp, end = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -206,10 +209,14 @@ private fun MapStatusPanel(
                 }
             } else {
                 Text(
-                    text = location?.placeLabel ?: stringResource(R.string.home_location_unavailable),
+                    text = when {
+                        uiState.exitIpFailed -> stringResource(R.string.home_exit_connection_failed)
+                        location != null -> location.placeLabel
+                        else -> stringResource(R.string.home_location_unavailable)
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = mapContentColor,
+                    color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error else mapContentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -545,16 +552,21 @@ private fun SmallStatusCard(
 }
 
 @Composable
-private fun ExitIpCard(uiState: MainUiState) {
+private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
     val location = uiState.geoLocation
     val unavailable = stringResource(R.string.home_location_unavailable)
+    val connectionFailed = stringResource(R.string.home_exit_connection_failed)
     val region = listOf(location?.country.orEmpty(), location?.region.orEmpty(), location?.city.orEmpty())
         .filter { it.isNotBlank() }
         .distinct()
         .joinToString(" / ")
-        .ifBlank { unavailable }
+        .ifBlank { if (uiState.exitIpFailed) connectionFailed else unavailable }
 
-    DashboardCard {
+    DashboardCard(
+        modifier = Modifier.clickable(enabled = !uiState.isLocating) {
+            onAction(MainAction.RefreshExitLocation)
+        },
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -578,9 +590,12 @@ private fun ExitIpCard(uiState: MainUiState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = location?.ip.orEmpty().ifBlank { "-" },
+                    text = if (uiState.exitIpFailed) connectionFailed
+                    else location?.ip.orEmpty().ifBlank { "-" },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -605,15 +620,42 @@ private fun ExitIpCard(uiState: MainUiState) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.height(8.dp))
+        Row {
+            Text(
+                text = stringResource(R.string.home_exit_latency),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = when {
+                    uiState.isLocating -> stringResource(R.string.home_locating)
+                    uiState.exitIpLatencyMs != null -> stringResource(
+                        R.string.home_exit_latency_value,
+                        uiState.exitIpLatencyMs,
+                    )
+                    else -> "-"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface,
+            )
+        }
     }
 }
 
 @Composable
-private fun DashboardCard(content: @Composable ColumnScope.() -> Unit) {
+private fun DashboardCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 12.dp)
+            .then(modifier),
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {

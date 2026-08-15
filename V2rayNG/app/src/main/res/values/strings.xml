@@ -531,6 +531,9 @@
     <string name="home_active_mode">Current mode</string>
     <string name="home_exit_ip">Exit IP</string>
     <string name="home_country_region">Country / region</string>
+    <string name="home_exit_latency">Latency</string>
+    <string name="home_exit_latency_value">%1$d ms</string>
+    <string name="home_exit_connection_failed">Connection failed</string>
     <string name="home_node_list">Nodes</string>
     <string name="home_view_all">View all</string>
 

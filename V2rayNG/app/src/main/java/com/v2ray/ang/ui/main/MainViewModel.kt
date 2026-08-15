@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.main
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -83,6 +84,8 @@ class MainViewModel(
     private var selectedGroupLoadJob: Job? = null
     private var reloadJob: Job? = null
     private var locationJob: Job? = null
+    @Volatile
+    private var locationRequestId = 0L
 
     @Volatile
     private var testingGroupId: String? = null
@@ -179,6 +182,7 @@ class MainViewModel(
         when (action) {
             MainAction.Initialize -> initialize()
             MainAction.RefreshGroups -> setupGroupTab(forceRefresh = true)
+            MainAction.RefreshExitLocation -> refreshIPLocation(_uiState.value.isRunning)
             MainAction.TestAllServers -> testAllRealPing(true)
             MainAction.TestRealAllServers -> testAllRealPing()
             MainAction.CancelTesting -> cancelAllPing()
@@ -794,31 +798,47 @@ class MainViewModel(
     // ---------- Running state ----------
     private fun updateRunningState(running: Boolean, clearTestingText: Boolean = true) {
         val previousRunning = _uiState.value.isRunning
+        val runningChanged = previousRunning != running
         _uiState.update { state ->
             state.copy(
                 isRunning = running,
                 statusText = if (!clearTestingText && state.isTesting) state.statusText
-                else if (running) connectedText else disconnectedText
+                else if (running) connectedText else disconnectedText,
+                geoLocation = if (runningChanged) null else state.geoLocation,
+                exitIpLatencyMs = if (runningChanged) null else state.exitIpLatencyMs,
+                exitIpFailed = false,
             )
         }
-        if (previousRunning != running || _uiState.value.geoLocation == null) {
+        if (runningChanged || _uiState.value.geoLocation == null) {
             refreshIPLocation(useProxy = running)
         }
     }
 
     private fun refreshIPLocation(useProxy: Boolean) {
         locationJob?.cancel()
+        val requestId = ++locationRequestId
         locationJob = viewModelScope.launch(ioDispatcher) {
-            _uiState.update { it.copy(isLocating = true) }
+            _uiState.update {
+                it.copy(
+                    isLocating = true,
+                    exitIpLatencyMs = null,
+                    exitIpFailed = false,
+                )
+            }
             if (useProxy) delay(750L)
+            val startedAt = SystemClock.elapsedRealtime()
             val location = runCatching { dataSource.getIPLocation(useProxy) }
                 .onFailure { LogUtil.e(AppConfig.TAG, "Failed to locate public IP", it) }
                 .getOrNull()
-            if (_uiState.value.isRunning == useProxy) {
+                ?.takeIf { it.ip.isNotBlank() }
+            val latencyMs = SystemClock.elapsedRealtime() - startedAt
+            if (requestId == locationRequestId && _uiState.value.isRunning == useProxy) {
                 _uiState.update {
                     it.copy(
-                        geoLocation = location ?: it.geoLocation,
+                        geoLocation = location,
                         isLocating = false,
+                        exitIpLatencyMs = latencyMs.takeIf { location != null },
+                        exitIpFailed = useProxy && location == null,
                     )
                 }
             }

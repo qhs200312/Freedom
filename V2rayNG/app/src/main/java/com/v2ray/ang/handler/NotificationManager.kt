@@ -125,13 +125,20 @@ object NotificationManager {
     /**
      * Cancels the notification.
      */
+    @Synchronized
     fun cancelNotification() {
         val service = getService() ?: return
-        service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        val notificationManager = getNotificationManager()
 
-        mBuilder = null
+        // Stop updates before removing the foreground notification. TrafficStatsManager emits
+        // one final zero-speed snapshot during shutdown; without serialization that collector
+        // can repost the notification immediately after stopForeground removes it.
         speedNotificationJob?.cancel()
         speedNotificationJob = null
+        mBuilder = null
+        service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        notificationManager?.cancel(NOTIFICATION_ID)
+
         mNotificationManager = null
     }
 
@@ -168,6 +175,7 @@ object NotificationManager {
      * @param proxyTraffic The proxy traffic.
      * @param directTraffic The direct traffic.
      */
+    @Synchronized
     private fun updateNotification(
         proxyText: String,
         directText: String,

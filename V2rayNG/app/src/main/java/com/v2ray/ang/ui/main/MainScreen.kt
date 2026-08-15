@@ -83,9 +83,6 @@ fun MainScreen(
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp
     val rootView = LocalView.current
     val darkTheme = LocalDarkTheme.current
-    val homeServers by mainViewModel
-        .serversForGroup(uiState.selectedGroupId)
-        .collectAsStateWithLifecycle()
     var selectedDestinationIndex by rememberSaveable { mutableStateOf(MainDestination.Dashboard.ordinal) }
     val selectedDestination = MainDestination.values()[selectedDestinationIndex]
 
@@ -249,11 +246,7 @@ fun MainScreen(
                 MainDestination.Dashboard -> {
                     HomeDashboard(
                         uiState = uiState,
-                        servers = homeServers,
                         onAction = onAction,
-                        onOpenNodes = {
-                            selectedDestinationIndex = MainDestination.Nodes.ordinal
-                        },
                         modifier = Modifier.fillMaxSize(),
                         mapContentTopPadding = dashboardContentTopPadding,
                     )

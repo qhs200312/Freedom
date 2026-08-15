@@ -534,6 +534,8 @@
     <string name="home_exit_latency">Latency</string>
     <string name="home_exit_latency_value">%1$d ms</string>
     <string name="home_exit_connection_failed">Connection failed</string>
+    <string name="home_refresh_exit_ip">Refresh exit IP</string>
+    <string name="home_map_exit_latency">Latency %1$d ms</string>
     <string name="home_node_list">Nodes</string>
     <string name="home_view_all">View all</string>
 

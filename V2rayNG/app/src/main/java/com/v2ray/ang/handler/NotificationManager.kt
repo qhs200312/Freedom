@@ -44,7 +44,7 @@ object NotificationManager {
      * @param currentConfig The current profile configuration.
      */
     fun startSpeedNotification() {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) != true) return
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) == false) return
         if (speedNotificationJob != null || CoreServiceManager.isRunning() == false) return
 
         var lastZeroSpeed = false

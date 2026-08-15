@@ -522,6 +522,8 @@
     <string name="home_exit_latency">延迟</string>
     <string name="home_exit_latency_value">%1$d ms</string>
     <string name="home_exit_connection_failed">连接失败</string>
+    <string name="home_refresh_exit_ip">刷新出口 IP</string>
+    <string name="home_map_exit_latency">延迟 %1$d ms</string>
     <string name="home_node_list">节点列表</string>
     <string name="home_view_all">查看全部</string>
     <!-- Main navigation -->

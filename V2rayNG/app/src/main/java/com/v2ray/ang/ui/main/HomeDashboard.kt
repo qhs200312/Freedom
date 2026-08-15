@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,7 +52,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.entities.ServersCache
 import com.v2ray.ang.enums.ProxyMode
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.extension.toTrafficString
@@ -71,9 +71,7 @@ private const val HistorySize = 48
 @Composable
 fun HomeDashboard(
     uiState: MainUiState,
-    servers: List<ServersCache>,
     onAction: (MainAction) -> Unit,
-    onOpenNodes: () -> Unit = {},
     modifier: Modifier = Modifier,
     mapContentTopPadding: Dp = 16.dp,
 ) {
@@ -104,14 +102,6 @@ fun HomeDashboard(
             item { TrafficDataCard(uiState = uiState) }
             item { DeviceStatusCards(uiState = uiState) }
             item { ExitIpCard(uiState = uiState, onAction = onAction) }
-            item {
-                HomeNodeList(
-                    uiState = uiState,
-                    servers = servers,
-                    onAction = onAction,
-                    onOpenNodes = onOpenNodes,
-                )
-            }
         }
         if (showStatusBarScrim) {
             Box(
@@ -136,11 +126,19 @@ private fun MapStatusPanel(
     val mapContentColor = if (isDarkTheme) Color.White else Color(0xFF173239)
     val mapSecondaryContentColor = mapContentColor.copy(alpha = if (isDarkTheme) 0.68f else 0.72f)
     val accent = if (uiState.isRunning) ConnectedGreen else DisconnectedBlue
+    val mapInteractionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(contentTopPadding + 330.dp)
+            .clickable(
+                enabled = !uiState.isLocating,
+                interactionSource = mapInteractionSource,
+                indication = null,
+            ) {
+                onAction(MainAction.RefreshExitLocation)
+            }
             .background(mapBackground),
     ) {
         TranslucentLocationMap(
@@ -155,9 +153,6 @@ private fun MapStatusPanel(
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .clickable(enabled = !uiState.isLocating) {
-                    onAction(MainAction.RefreshExitLocation)
-                }
                 .padding(top = contentTopPadding + 8.dp, start = 24.dp, end = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -234,6 +229,14 @@ private fun MapStatusPanel(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                uiState.exitIpLatencyMs?.let { latencyMs ->
+                    Text(
+                        text = stringResource(R.string.home_map_exit_latency, latencyMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = mapSecondaryContentColor,
+                        maxLines = 1,
+                    )
+                }
             }
         }
 
@@ -600,6 +603,30 @@ private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                onClick = { onAction(MainAction.RefreshExitLocation) },
+                enabled = !uiState.isLocating,
+                modifier = Modifier.size(38.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (uiState.isLocating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_refresh_24dp),
+                            contentDescription = stringResource(R.string.home_refresh_exit_ip),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
         }
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 12.dp),
@@ -663,118 +690,6 @@ private fun DashboardCard(
             modifier = Modifier.padding(16.dp),
             content = content,
         )
-    }
-}
-
-@Composable
-private fun HomeNodeList(
-    uiState: MainUiState,
-    servers: List<ServersCache>,
-    onAction: (MainAction) -> Unit,
-    onOpenNodes: () -> Unit,
-) {
-    DashboardCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenNodes),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.home_node_list),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = stringResource(R.string.home_view_all),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                painter = painterResource(R.drawable.ic_chevron_right_24dp),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        if (servers.isEmpty()) {
-            Text(
-                text = stringResource(R.string.home_no_server),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-            )
-            return@DashboardCard
-        }
-
-        Spacer(Modifier.height(10.dp))
-        servers.take(5).forEachIndexed { index, server ->
-            if (index > 0) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 34.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-                )
-            }
-            val selected = server.guid == uiState.selectedGuid
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAction(MainAction.SelectServer(server.guid)) }
-                    .padding(vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (selected) ConnectedGreen
-                            else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (selected) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(Color.White),
-                        )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = server.profile.remarks,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = server.profile.getServerAddressAndPort(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (server.testDelayString.isNotBlank()) {
-                    Text(
-                        text = server.testDelayString,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (server.testDelayMillis < 0L) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            ConnectedGreen
-                        },
-                    )
-                }
-            }
-        }
     }
 }
 

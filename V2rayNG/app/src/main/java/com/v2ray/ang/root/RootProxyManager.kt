@@ -36,6 +36,9 @@ object RootProxyManager {
     private const val MARK = AppConfig.ROOT_MARK_ROUTE
     private const val TPROXY_CHAIN = AppConfig.ROOT_TPROXY_CHAIN
     private const val TPROXY_DIVERT_CHAIN = AppConfig.ROOT_TPROXY_DIVERT_CHAIN
+    private const val WATCHDOG_HEALTHY_INTERVAL_SECONDS = 120
+    private const val WATCHDOG_RETRY_INTERVAL_SECONDS = 5
+    private const val OOM_GUARD_INTERVAL_SECONDS = 60
 
     // Local / private / multicast destinations that must never be proxied.
     private val bypassCidrs = listOf(
@@ -146,9 +149,9 @@ object RootProxyManager {
                 val safeUrl = url.replace("'", "'\\''")
                 appendLine("  curl -4 -fsS -o /dev/null --connect-timeout 6 --max-time 12 '$safeUrl' && healthy=1 && break")
             }
-            appendLine("  if [ \$healthy -eq 1 ]; then failures=0; sleep 30; continue; fi")
+            appendLine("  if [ \$healthy -eq 1 ]; then failures=0; sleep $WATCHDOG_HEALTHY_INTERVAL_SECONDS; continue; fi")
             appendLine("  failures=\$((failures+1))")
-            appendLine("  if [ \$failures -lt 2 ]; then sleep 5; continue; fi")
+            appendLine("  if [ \$failures -lt 2 ]; then sleep $WATCHDOG_RETRY_INTERVAL_SECONDS; continue; fi")
             // Remove capture before killing the core so the device never points at a dead listener.
             appendLine("  sh '${teardownFile.absolutePath}' >/dev/null 2>&1")
             appendLine("  kill $corePid 2>/dev/null || true")
@@ -208,7 +211,7 @@ object RootProxyManager {
             appendLine("echo ${AppConfig.ROOT_OOM_SCORE} > /proc/\$TPROXY_PID/oom_score_adj 2>/dev/null || true")
             appendLine("i=0; while [ \$i -lt 20 ]; do ss -lnptu 2>/dev/null | grep -q ':${AppConfig.ROOT_TPROXY_PORT} ' && break; kill -0 \$TPROXY_PID 2>/dev/null || break; sleep 0.2; i=\$((i+1)); done")
             appendLine("ss -lnptu 2>/dev/null | grep -q ':${AppConfig.ROOT_TPROXY_PORT} ' || { echo 'TProxy helper did not start'; cat '$logFile' 2>/dev/null; exit 1; }")
-            appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep 5; done' >/dev/null 2>&1 &")
+            appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep $OOM_GUARD_INTERVAL_SECONDS; done' >/dev/null 2>&1 &")
             appendLine("echo \$! > '$oomGuardPid'")
             appendLine("ip route replace local 0.0.0.0/0 dev lo table $TABLE")
             appendLine("ip rule add fwmark $MARK table $TABLE priority $PRIORITY")
@@ -320,7 +323,7 @@ object RootProxyManager {
             // Protect the core (this app process) from the Android low-memory killer.
             // system_server keeps recomputing oom_score_adj for app processes, so a single
             // write would be reverted — re-pin it from a small root loop instead.
-            appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep 5; done' >/dev/null 2>&1 &")
+            appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep $OOM_GUARD_INTERVAL_SECONDS; done' >/dev/null 2>&1 &")
             appendLine("echo \$! > '$oomGuardPid'")
             // tun device node
             appendLine("if [ ! -e /dev/net/tun ]; then mkdir -p /dev/net; mknod /dev/net/tun c 10 200; chmod 666 /dev/net/tun; fi")

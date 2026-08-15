@@ -22,8 +22,8 @@ import kotlinx.coroutines.launch
 
 /** Single owner of Xray's reset-on-read traffic counters. */
 object TrafficStatsManager {
-    private const val QUERY_INTERVAL_MS = 1_000L
-    private const val PERSIST_INTERVAL_MS = 10_000L
+    private const val QUERY_INTERVAL_MS = 3_000L
+    private const val PERSIST_INTERVAL_MS = 30_000L
     private const val KEY_TOTAL_UPLINK = "home_total_uplink"
     private const val KEY_TOTAL_DOWNLINK = "home_total_downlink"
 

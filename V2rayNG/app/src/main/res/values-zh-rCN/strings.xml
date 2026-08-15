@@ -526,6 +526,10 @@
     <string name="home_map_exit_latency">延迟 %1$d ms</string>
     <string name="home_node_list">节点列表</string>
     <string name="home_view_all">查看全部</string>
+    <string name="home_chart_time_ago">%1$d分%2$d秒前</string>
+    <string name="home_chart_now">现在</string>
+    <string name="notification_speed_proxy">代理</string>
+    <string name="notification_speed_direct">直连</string>
     <!-- Main navigation -->
     <string name="main_nav_dashboard">仪表盘</string>
     <string name="main_nav_nodes">节点</string>

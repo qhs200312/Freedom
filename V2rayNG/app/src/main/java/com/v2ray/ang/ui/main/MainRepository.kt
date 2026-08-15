@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
@@ -102,7 +104,13 @@ class MainRepository(
             IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY),
             Utils.receiverFlags()
         )
-        MessageHelper.sendMsg2Service(app, AppConfig.MSG_REGISTER_CLIENT, "")
+        // Let MainViewModel subscribe before the daemon replies. Sending synchronously from
+        // this constructor can lose the initial running-state event on a cold UI launch.
+        Handler(Looper.getMainLooper()).post {
+            if (!closed.get()) {
+                MessageHelper.sendMsg2Service(app, AppConfig.MSG_REGISTER_CLIENT, "")
+            }
+        }
     }
 
     override fun close() {

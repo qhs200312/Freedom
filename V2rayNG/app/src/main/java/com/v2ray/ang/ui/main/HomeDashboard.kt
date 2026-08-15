@@ -35,6 +35,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +57,7 @@ import com.v2ray.ang.enums.ProxyMode
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.extension.toTrafficString
 import com.v2ray.ang.ui.compose.LocalDarkTheme
+import kotlinx.coroutines.delay
 import kotlin.math.max
 
 internal val DashboardBackground = Color(0xFF10181B)
@@ -67,6 +69,8 @@ private val DownloadGreen = Color(0xFF25A472)
 private val TrafficOrange = Color(0xFFF17B35)
 private val RouteViolet = Color(0xFF8369C9)
 private const val HistorySize = 48
+private const val HistorySampleIntervalMs = 3_000L
+private const val HistoryWindowSeconds = (HistorySize * HistorySampleIntervalMs / 1_000L).toInt()
 
 @Composable
 fun HomeDashboard(
@@ -275,12 +279,17 @@ private fun TrafficDataCard(uiState: MainUiState) {
     }
     val upload = uiState.traffic.uplinkSpeed
     val download = uiState.traffic.downlinkSpeed
+    val latestUpload by rememberUpdatedState(upload)
+    val latestDownload by rememberUpdatedState(download)
 
-    LaunchedEffect(upload, download) {
-        uploadHistory.add(upload)
-        downloadHistory.add(download)
-        while (uploadHistory.size > HistorySize) uploadHistory.removeAt(0)
-        while (downloadHistory.size > HistorySize) downloadHistory.removeAt(0)
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(HistorySampleIntervalMs)
+            uploadHistory.add(latestUpload)
+            downloadHistory.add(latestDownload)
+            while (uploadHistory.size > HistorySize) uploadHistory.removeAt(0)
+            while (downloadHistory.size > HistorySize) downloadHistory.removeAt(0)
+        }
     }
 
     DashboardCard {
@@ -387,34 +396,77 @@ private fun HeadlineSpeed(label: String, value: String, color: Color, modifier: 
 @Composable
 private fun SpeedHistoryChart(uploadHistory: List<Long>, downloadHistory: List<Long>) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f)
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(112.dp),
-    ) {
-        repeat(4) { index ->
-            val y = size.height * index / 3f
-            drawLine(gridColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
-        }
-        val graphMax = max(
-            uploadHistory.maxOrNull() ?: 0L,
-            downloadHistory.maxOrNull() ?: 0L,
-        ).coerceAtLeast(1L)
-
-        fun linePath(values: List<Long>): Path {
-            val path = Path()
-            if (values.isEmpty()) return path
-            values.forEachIndexed { index, value ->
-                val x = if (values.size == 1) 0f else size.width * index / (values.size - 1f)
-                val y = size.height - (value.toFloat() / graphMax.toFloat()) * size.height * 0.88f
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val graphMax = max(
+        uploadHistory.maxOrNull() ?: 0L,
+        downloadHistory.maxOrNull() ?: 0L,
+    ).coerceAtLeast(1L)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .width(54.dp)
+                    .height(112.dp)
+                    .padding(end = 7.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(graphMax.toSpeedString(), fontSize = 9.sp, color = labelColor, maxLines = 1)
+                Text((graphMax / 2L).toSpeedString(), fontSize = 9.sp, color = labelColor, maxLines = 1)
+                Text("0 B/s", fontSize = 9.sp, color = labelColor, maxLines = 1)
             }
-            return path
-        }
+            Canvas(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(112.dp),
+            ) {
+                repeat(3) { index ->
+                    val y = size.height * index / 2f
+                    drawLine(
+                        gridColor,
+                        start = androidx.compose.ui.geometry.Offset(0f, y),
+                        end = androidx.compose.ui.geometry.Offset(size.width, y),
+                    )
+                }
 
-        val stroke = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        drawPath(linePath(downloadHistory), color = DownloadGreen, style = stroke)
-        drawPath(linePath(uploadHistory), color = UploadBlue, style = stroke)
+                fun linePath(values: List<Long>): Path {
+                    val path = Path()
+                    if (values.isEmpty()) return path
+                    values.forEachIndexed { index, value ->
+                        val x = if (values.size == 1) 0f else size.width * index / (values.size - 1f)
+                        val y = size.height - (value.toFloat() / graphMax.toFloat()) * size.height * 0.88f
+                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    return path
+                }
+
+                val stroke = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                drawPath(linePath(downloadHistory), color = DownloadGreen, style = stroke)
+                drawPath(linePath(uploadHistory), color = UploadBlue, style = stroke)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 54.dp, top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                stringResource(R.string.home_chart_time_ago, HistoryWindowSeconds / 60, HistoryWindowSeconds % 60),
+                fontSize = 9.sp,
+                color = labelColor,
+            )
+            Text(
+                stringResource(
+                    R.string.home_chart_time_ago,
+                    HistoryWindowSeconds / 120,
+                    (HistoryWindowSeconds / 2) % 60,
+                ),
+                fontSize = 9.sp,
+                color = labelColor,
+            )
+            Text(stringResource(R.string.home_chart_now), fontSize = 9.sp, color = labelColor)
+        }
     }
 }
 

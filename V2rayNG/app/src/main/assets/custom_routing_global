@@ -1,11 +1,5 @@
 [
   {
-    "remarks": "阻断udp443",
-    "outboundTag": "block",
-    "port": "443",
-    "network": "udp"
-  },
-  {
     "remarks": "绕过局域网IP",
     "outboundTag": "direct",
     "ip": [

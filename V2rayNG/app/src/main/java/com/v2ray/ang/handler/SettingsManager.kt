@@ -44,6 +44,7 @@ object SettingsManager {
         ensureDefaultSettings()
         //ensureDefaultSubscription()
         initRoutingRulesets(context)
+        removeUdp443BlockingRules()
         migrateServerListToSubscriptions()
         migrateHysteria2PinSHA256()
     }
@@ -58,6 +59,16 @@ object SettingsManager {
             val rulesetList = getPresetRoutingRulesets(context)
             MmkvManager.encodeRoutingRulesets(rulesetList)
         }
+    }
+
+    private fun removeUdp443BlockingRules() {
+        val rulesets = MmkvManager.decodeRoutingRulesets() ?: return
+        val changed = rulesets.removeAll {
+            it.outboundTag == AppConfig.TAG_BLOCKED &&
+                it.port?.trim() == "443" &&
+                it.network.equals("udp", ignoreCase = true)
+        }
+        if (changed) MmkvManager.encodeRoutingRulesets(rulesets)
     }
 
     /**

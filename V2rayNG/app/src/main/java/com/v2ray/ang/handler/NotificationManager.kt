@@ -22,10 +22,8 @@ import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlin.math.min
 
 object NotificationManager {
     private const val NOTIFICATION_ID = 1
@@ -33,7 +31,6 @@ object NotificationManager {
     private const val NOTIFICATION_PENDING_INTENT_STOP_V2RAY = 1
     private const val NOTIFICATION_PENDING_INTENT_RESTART_V2RAY = 2
     private const val NOTIFICATION_ICON_THRESHOLD = 3000
-    private const val QUERY_INTERVAL_MS = 3000L
 
     private var mBuilder: NotificationCompat.Builder? = null
     private var speedNotificationJob: Job? = null
@@ -44,18 +41,17 @@ object NotificationManager {
      * @param currentConfig The current profile configuration.
      */
     fun startSpeedNotification() {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) == false) return
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED, true) == false) return
         if (speedNotificationJob != null || CoreServiceManager.isRunning() == false) return
 
         var lastZeroSpeed = false
 
         speedNotificationJob = CoroutineScope(Dispatchers.IO).launch {
-            while (isActive) {
+            TrafficStatsManager.snapshot.collect { snapshot ->
                 lastZeroSpeed = updateSpeedNotificationOnce(
-                    TrafficStatsManager.snapshot.value,
+                    snapshot,
                     lastZeroSpeed,
                 )
-                delay(QUERY_INTERVAL_MS)
             }
         }
     }
@@ -146,7 +142,7 @@ object NotificationManager {
         speedNotificationJob?.let {
             it.cancel()
             speedNotificationJob = null
-            updateNotification("", 0, 0)
+            updateNotification("", "", 0, 0)
         }
     }
 
@@ -172,7 +168,12 @@ object NotificationManager {
      * @param proxyTraffic The proxy traffic.
      * @param directTraffic The direct traffic.
      */
-    private fun updateNotification(contentText: String?, proxyTraffic: Long, directTraffic: Long) {
+    private fun updateNotification(
+        proxyText: String,
+        directText: String,
+        proxyTraffic: Long,
+        directTraffic: Long,
+    ) {
         if (mBuilder != null) {
             if (proxyTraffic < NOTIFICATION_ICON_THRESHOLD && directTraffic < NOTIFICATION_ICON_THRESHOLD) {
                 mBuilder?.setSmallIcon(R.drawable.ic_stat_name)
@@ -181,8 +182,15 @@ object NotificationManager {
             } else {
                 mBuilder?.setSmallIcon(R.drawable.ic_stat_direct)
             }
-            mBuilder?.setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-            mBuilder?.setContentText(contentText)
+            if (proxyText.isNotBlank()) {
+                mBuilder?.setContentTitle(proxyText)
+            }
+            mBuilder?.setContentText(directText)
+            mBuilder?.setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    listOf(proxyText, directText).filter { it.isNotBlank() }.joinToString("\n"),
+                ),
+            )
             getNotificationManager()?.notify(NOTIFICATION_ID, mBuilder?.build())
         }
     }
@@ -206,15 +214,8 @@ object NotificationManager {
      * @param up The uplink speed.
      * @param down The downlink speed.
      */
-    private fun appendSpeedString(text: StringBuilder, name: String?, up: Double, down: Double) {
-        var n = name ?: "no tag"
-        n = n.take(min(n.length, 6))
-        text.append(n)
-        for (i in n.length..6 step 2) {
-            text.append("\t")
-        }
-        text.append("•  ${up.toLong().toSpeedString()}↑  ${down.toLong().toSpeedString()}↓\n")
-    }
+    private fun formatSpeedLine(name: String, up: Long, down: Long): String =
+        "$name  ↑ ${up.toSpeedString()}  ↓ ${down.toSpeedString()}"
 
     /**
      * Updates the speed notification once.
@@ -230,19 +231,18 @@ object NotificationManager {
         val directTotal = snapshot.directUplinkSpeed + snapshot.directDownlinkSpeed
         val zeroSpeed = proxyTotal + directTotal == 0L
         if (!zeroSpeed || !lastZeroSpeed) {
-            val text = StringBuilder()
-            appendSpeedString(
-                text, AppConfig.TAG_PROXY,
-                snapshot.proxyUplinkSpeed.toDouble(),
-                snapshot.proxyDownlinkSpeed.toDouble(),
+            val service = getService() ?: return lastZeroSpeed
+            val proxyText = formatSpeedLine(
+                service.getString(R.string.notification_speed_proxy),
+                snapshot.proxyUplinkSpeed,
+                snapshot.proxyDownlinkSpeed,
             )
-
-            appendSpeedString(
-                text, AppConfig.TAG_DIRECT,
-                snapshot.directUplinkSpeed.toDouble(),
-                snapshot.directDownlinkSpeed.toDouble(),
+            val directText = formatSpeedLine(
+                service.getString(R.string.notification_speed_direct),
+                snapshot.directUplinkSpeed,
+                snapshot.directDownlinkSpeed,
             )
-            updateNotification(text.toString(), proxyTotal, directTotal)
+            updateNotification(proxyText, directText, proxyTotal, directTotal)
         }
         return zeroSpeed
     }

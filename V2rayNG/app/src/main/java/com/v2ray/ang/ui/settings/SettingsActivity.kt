@@ -87,7 +87,6 @@ fun SettingsScreen(
     var mux by rememberMmkvBool(AppConfig.PREF_MUX_ENABLED, false)
     var muxConcurrency by rememberMmkvString(AppConfig.PREF_MUX_CONCURRENCY, "8")
     var muxXudpConcurrency by rememberMmkvString(AppConfig.PREF_MUX_XUDP_CONCURRENCY, "8")
-    var muxXudpQuic by rememberMmkvString(AppConfig.PREF_MUX_XUDP_QUIC, "reject")
 
     var fragment by rememberMmkvBool(AppConfig.PREF_FRAGMENT_ENABLED, false)
     var fragmentPackets by rememberMmkvString(AppConfig.PREF_FRAGMENT_PACKETS, "tlshello")
@@ -142,7 +141,6 @@ fun SettingsScreen(
     val hevTunEnabled = isVpn && useHevTun
     val localProxyForced = hevTunEnabled
     val effectiveLocalProxy = enableLocalProxy || localProxyForced
-    val muxXudpConcurrencyInt = muxXudpConcurrency.toIntOrNull() ?: 8
 
     val languageEntries = stringArrayResource(R.array.language_select).toList()
     val languageValues = stringArrayResource(R.array.language_select_value).toList()
@@ -158,8 +156,6 @@ fun SettingsScreen(
     val coreLogLevelValues = stringArrayResource(R.array.core_loglevel).toList()
     val outboundResolveEntries = stringArrayResource(R.array.outbound_domain_resolve_method).toList()
     val outboundResolveValues = stringArrayResource(R.array.outbound_domain_resolve_method_value).toList()
-    val xudpQuicEntries = stringArrayResource(R.array.mux_xudp_quic_entries).toList()
-    val xudpQuicValues = stringArrayResource(R.array.mux_xudp_quic_value).toList()
     val fragmentPacketsEntries = stringArrayResource(R.array.fragment_packets).toList()
     val fragmentPacketsValues = stringArrayResource(R.array.fragment_packets).toList()
     val observatoryLeastLoadMethodEntries = stringArrayResource(R.array.observatory_least_load_method).toList()
@@ -465,14 +461,6 @@ fun SettingsScreen(
                     enabled = mux,
                     keyboardNumber = true,
                     onValueChanged = { muxXudpConcurrency = it }
-                )
-                SettingsListItem(
-                    title = stringResource(R.string.title_pref_mux_xudp_quic),
-                    entries = xudpQuicEntries,
-                    values = xudpQuicValues,
-                    selectedValue = muxXudpQuic,
-                    enabled = mux && muxXudpConcurrencyInt >= 0,
-                    onSelected = { muxXudpQuic = it }
                 )
             }
 

@@ -133,6 +133,7 @@ object RootProxyManager {
     private fun startDataPathWatchdog(context: Context) {
         val runDir = File(context.filesDir, AppConfig.ROOT_RUNTIME_DIR).apply { mkdirs() }
         val watchdogFile = File(runDir, "data_path_watchdog.sh")
+        val watchdogPidFile = File(runDir, "watchdog.pid")
         val teardownFile = File(runDir, "teardown_rules.sh")
         val corePid = Process.myPid()
         val urls = listOf(
@@ -147,12 +148,13 @@ object RootProxyManager {
             appendLine("  healthy=0")
             for (url in urls) {
                 val safeUrl = url.replace("'", "'\\''")
-                appendLine("  curl -4 -fsS -o /dev/null --connect-timeout 6 --max-time 12 '$safeUrl' && healthy=1 && break")
+                appendLine("  if [ \$healthy -eq 0 ] && curl -4 -fsS -o /dev/null --connect-timeout 6 --max-time 12 '$safeUrl'; then healthy=1; fi")
             }
             appendLine("  if [ \$healthy -eq 1 ]; then failures=0; sleep $WATCHDOG_HEALTHY_INTERVAL_SECONDS; continue; fi")
             appendLine("  failures=\$((failures+1))")
             appendLine("  if [ \$failures -lt 2 ]; then sleep $WATCHDOG_RETRY_INTERVAL_SECONDS; continue; fi")
             // Remove capture before killing the core so the device never points at a dead listener.
+            appendLine("  rm -f '${watchdogPidFile.absolutePath}'")
             appendLine("  sh '${teardownFile.absolutePath}' >/dev/null 2>&1")
             appendLine("  kill $corePid 2>/dev/null || true")
             appendLine("  exit 0")
@@ -160,10 +162,11 @@ object RootProxyManager {
         })
         watchdogFile.setExecutable(true, false)
         val safePath = watchdogFile.absolutePath.replace("'", "'\\''")
+        val safePidPath = watchdogPidFile.absolutePath.replace("'", "'\\''")
         RootShell.runScript(
             context,
             "launch_data_path_watchdog.sh",
-            "nohup sh '$safePath' >/dev/null 2>&1 &\nexit 0\n"
+            "nohup sh '$safePath' >/dev/null 2>&1 &\necho \$! > '$safePidPath'\nexit 0\n"
         )
     }
 
@@ -634,8 +637,11 @@ object RootProxyManager {
         val pidFile = File(runDir, "tun2socks.pid").absolutePath
         val tproxyPidFile = File(runDir, "tproxy.pid").absolutePath
         val oomGuardPid = File(runDir, "oomguard.pid").absolutePath
+        val watchdogPidFile = File(runDir, "watchdog.pid").absolutePath
         val corePid = Process.myPid()
         return buildString {
+            appendLine("[ -f '$watchdogPidFile' ] && kill -KILL \$(cat '$watchdogPidFile') 2>/dev/null || true")
+            appendLine("rm -f '$watchdogPidFile'")
             // Some vendor iproute2 builds return success even when no matching rule remains.
             // Keep duplicate cleanup bounded so teardown can never spin until RootShell times out.
             appendLine("del_all() { n=0; while [ \"\$n\" -lt 16 ]; do \"\$@\" 2>/dev/null || break; n=\$((n+1)); done; }")
@@ -692,7 +698,7 @@ object RootProxyManager {
             appendLine("fi")
             appendLine("rm -f '$tproxyPidFile'")
             // stop the OOM re-pin loop and restore the core process's LMK priority
-            appendLine("[ -f '$oomGuardPid' ] && kill \$(cat '$oomGuardPid') 2>/dev/null || true")
+            appendLine("[ -f '$oomGuardPid' ] && kill -KILL \$(cat '$oomGuardPid') 2>/dev/null || true")
             appendLine("rm -f '$oomGuardPid'")
             appendLine("echo 0 > /proc/$corePid/oom_score_adj 2>/dev/null || true")
         }

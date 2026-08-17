@@ -3,6 +3,9 @@ package com.v2ray.ang.ui.main
 import android.app.Activity
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -20,6 +24,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -28,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +46,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,8 +60,10 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.ui.checkupdate.UpdateAvailableDialog
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.QRCodeDialog
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -73,6 +85,7 @@ fun MainScreen(
     onNavigate: (String) -> Unit,
 ) {
     val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val availableUpdate by mainViewModel.availableUpdate.collectAsStateWithLifecycle()
     val groups = uiState.groups
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
     val selectedGuid = uiState.selectedGuid
@@ -82,6 +95,7 @@ fun MainScreen(
     val dashboardContentTopPadding =
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp
     val rootView = LocalView.current
+    val context = LocalContext.current
     val darkTheme = LocalDarkTheme.current
     var selectedDestinationIndex by rememberSaveable { mutableStateOf(MainDestination.Dashboard.ordinal) }
     val selectedDestination = MainDestination.values()[selectedDestinationIndex]
@@ -225,6 +239,16 @@ fun MainScreen(
     if (shareQRCodeBitmap != null) {
         QRCodeDialog(bitmap = shareQRCodeBitmap, onDismiss = { onAction(MainAction.DismissQRCodeDialog) })
     }
+    availableUpdate?.let { result ->
+        UpdateAvailableDialog(
+            result = result,
+            onDismiss = mainViewModel::dismissAvailableUpdate,
+            onUpdate = {
+                mainViewModel.dismissAvailableUpdate()
+                result.downloadUrl?.let { Utils.openUri(context, it) }
+            },
+        )
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -366,14 +390,14 @@ fun MainScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainBottomNavigation(
     selectedDestination: MainDestination,
     onDestinationSelected: (MainDestination) -> Unit,
 ) {
-    Surface(
-        color = Color.Transparent,
-    ) {
+    val darkTheme = LocalDarkTheme.current
+    Surface(color = Color.Transparent) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -390,29 +414,73 @@ private fun MainBottomNavigation(
             ) {
                 MainDestination.values().forEach { destination ->
                     val selected = destination == selectedDestination
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { onDestinationSelected(destination) },
-                        icon = {
-                            Icon(
-                                painter = painterResource(destination.iconRes),
-                                contentDescription = stringResource(destination.labelRes),
+                    val indicatorShape = RoundedCornerShape(20.dp)
+                    val glassBrush = Brush.verticalGradient(
+                        colors = if (darkTheme) {
+                            listOf(
+                                Color.White.copy(alpha = 0.18f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.78f),
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.46f),
                             )
                         },
-                        label = {
-                            Text(
-                                text = stringResource(destination.labelRes),
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.secondary,
-                            selectedTextColor = MaterialTheme.colorScheme.secondary,
-                            indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
                     )
+                    val glassBorder = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = if (darkTheme) 0.32f else 0.92f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f),
+                        )
+                    )
+
+                    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+                        NavigationBarItem(
+                            selected = selected,
+                            onClick = { onDestinationSelected(destination) },
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 76.dp, height = 56.dp)
+                                        .then(
+                                            if (selected) {
+                                                Modifier
+                                                    .clip(indicatorShape)
+                                                    .background(glassBrush)
+                                                    .border(0.8.dp, glassBorder, indicatorShape)
+                                            } else {
+                                                Modifier
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(destination.iconRes),
+                                            contentDescription = stringResource(destination.labelRes),
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                        Text(
+                                            text = stringResource(destination.labelRes),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                        )
+                                    }
+                                }
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.secondary,
+                                selectedTextColor = MaterialTheme.colorScheme.secondary,
+                                indicatorColor = Color.Transparent,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                    }
                 }
             }
         }

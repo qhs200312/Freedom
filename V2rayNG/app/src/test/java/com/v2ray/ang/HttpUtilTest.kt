@@ -2,7 +2,10 @@ package com.v2ray.ang
 
 import com.v2ray.ang.util.HttpUtil
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.ServerSocket
 
 class HttpUtilTest {
 
@@ -37,5 +40,14 @@ class HttpUtilTest {
         assertEquals(nonAsciiAuth, HttpUtil.toIdnUrl(nonAsciiAuth))
     }
 
+    @Test
+    fun tcpPortProbeReflectsWhetherPortIsListening() {
+        val closedPort = ServerSocket(0).use { it.localPort }
+        assertFalse(HttpUtil.isTcpPortOpen("127.0.0.1", closedPort))
+
+        ServerSocket(0).use { server ->
+            assertTrue(HttpUtil.isTcpPortOpen("127.0.0.1", server.localPort))
+        }
+    }
 
 }

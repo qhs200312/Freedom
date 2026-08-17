@@ -15,11 +15,25 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MalformedURLException
 import java.net.Proxy
+import java.net.Socket
 import java.net.URI
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
 object HttpUtil {
+
+    fun isTcpPortOpen(host: String, port: Int, timeout: Int = 200): Boolean {
+        if (port !in 1..65535 || timeout < 1) return false
+
+        return try {
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, port), timeout)
+                true
+            }
+        } catch (_: IOException) {
+            false
+        }
+    }
 
     /**
      * Converts the domain part of a URL string to its IDN (Punycode, ASCII Compatible Encoding) format.

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.text.TextUtils
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.dto.BatchImportResult
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.dto.SubscriptionUpdateResult
 import com.v2ray.ang.dto.UrlContentRequest
@@ -174,9 +175,9 @@ object AngConfigManager {
      * @param server The server string.
      * @param subid The subscription ID.
      * @param append Whether to append the configurations.
-     * @return A pair containing the number of configurations and subscriptions imported.
+     * @return Counts for imported configurations, recognized subscriptions, and subscription updates.
      */
-    fun importBatchConfig(server: String?, subid: String, append: Boolean): Pair<Int, Int> {
+    fun importBatchConfig(server: String?, subid: String, append: Boolean): BatchImportResult {
         var count = parseBatchConfig(Utils.decode(server), subid, append)
         if (count <= 0) {
             count = parseBatchConfig(server, subid, append)
@@ -185,42 +186,44 @@ object AngConfigManager {
             count = parseCustomConfigServer(server, subid, append)
         }
 
-        var countSub = parseBatchSubscription(server)
-        if (countSub <= 0) {
-            countSub = parseBatchSubscription(Utils.decode(server))
+        var subscriptions = parseBatchSubscription(server)
+        if (subscriptions.isEmpty()) {
+            subscriptions = parseBatchSubscription(Utils.decode(server))
         }
-        if (countSub > 0) {
-            updateConfigViaSubAll()
+        val updateResult = subscriptions.fold(SubscriptionUpdateResult()) { result, subscription ->
+            result + updateConfigViaSub(subscription)
         }
 
-        return count to countSub
+        return BatchImportResult(
+            configCount = count,
+            subscriptionCount = subscriptions.size,
+            subscriptionUpdate = updateResult,
+        )
     }
 
     /**
      * Parses a batch of subscriptions.
      *
      * @param servers The servers string.
-     * @return The number of subscriptions parsed.
+     * @return New or existing subscriptions recognized in the input.
      */
-    private fun parseBatchSubscription(servers: String?): Int {
+    private fun parseBatchSubscription(servers: String?): List<SubscriptionCache> {
         try {
             if (servers == null) {
-                return 0
+                return emptyList()
             }
 
-            var count = 0
-            servers.lines()
+            return servers.lineSequence()
+                .map(String::trim)
+                .filter(String::isNotEmpty)
                 .distinct()
-                .forEach { str ->
-                    if (Utils.isValidSubUrl(str)) {
-                        count += importUrlAsSubscription(str)
-                    }
-                }
-            return count
+                .filter(Utils::isValidSubUrl)
+                .map(::importUrlAsSubscription)
+                .toList()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to parse batch subscription", e)
         }
-        return 0
+        return emptyList()
     }
 
     /**
@@ -562,21 +565,25 @@ object AngConfigManager {
             val proxyUsername = SettingsManager.getSocksUsername()
             val proxyPassword = SettingsManager.getSocksPassword()
 
-            var configText = try {
-                val httpPort = SettingsManager.getHttpPort()
-                HttpUtil.getUrlContentWithUserAgent(
-                    UrlContentRequest(
-                        url = url,
-                        userAgent = userAgent,
-                        requestHeaders = requestHeaders,
-                        timeout = 15000,
-                        httpPort = httpPort,
-                        proxyUsername = proxyUsername,
-                        proxyPassword = proxyPassword
+            val httpPort = SettingsManager.getHttpPort()
+            var configText = if (HttpUtil.isTcpPortOpen(AppConfig.LOOPBACK, httpPort)) {
+                try {
+                    HttpUtil.getUrlContentWithUserAgent(
+                        UrlContentRequest(
+                            url = url,
+                            userAgent = userAgent,
+                            requestHeaders = requestHeaders,
+                            timeout = 15000,
+                            httpPort = httpPort,
+                            proxyUsername = proxyUsername,
+                            proxyPassword = proxyPassword
+                        )
                     )
-                )
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription: proxy not ready or other error", e)
+                } catch (e: Exception) {
+                    LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription through proxy failed", e)
+                    ""
+                }
+            } else {
                 ""
             }
             if (configText.isEmpty()) {
@@ -674,21 +681,21 @@ object AngConfigManager {
      * Imports a URL as a subscription.
      *
      * @param url The URL.
-     * @return The number of subscriptions imported.
+     * @return The existing subscription for this URL, or the newly created subscription.
      */
-    private fun importUrlAsSubscription(url: String): Int {
+    private fun importUrlAsSubscription(url: String): SubscriptionCache {
         val subscriptions = MmkvManager.decodeSubscriptions()
-        subscriptions.forEach {
-            if (it.subscription.url == url) {
-                return 0
-            }
+        subscriptions.firstOrNull { it.subscription.url.trim() == url }?.let {
+            return it
         }
         val uri = URI(Utils.fixIllegalUrl(url))
-        val subItem = SubscriptionItem()
-        subItem.remarks = uri.fragment ?: "import sub"
-        subItem.url = url
-        MmkvManager.encodeSubscription("", subItem)
-        return 1
+        val subItem = SubscriptionItem(
+            remarks = uri.fragment ?: "import sub",
+            url = url,
+        )
+        val guid = Utils.getUuid()
+        MmkvManager.encodeSubscription(guid, subItem)
+        return SubscriptionCache(guid, subItem)
     }
 
     /** Generates a description for the profile.

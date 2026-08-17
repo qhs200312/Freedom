@@ -93,6 +93,7 @@ class MainActivity : HelperBaseComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
+        mainViewModel.checkForUpdatesOnLaunch()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }

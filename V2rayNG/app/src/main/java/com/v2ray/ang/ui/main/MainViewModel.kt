@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.dto.CheckUpdateResult
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
 import com.v2ray.ang.dto.TestServiceMessage
@@ -16,7 +17,9 @@ import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.matchesPattern
 import com.v2ray.ang.extension.moveItem
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.UpdateCheckerManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CancellationException
@@ -67,6 +70,10 @@ class MainViewModel(
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
+    private val _availableUpdate = MutableStateFlow<CheckUpdateResult?>(null)
+    val availableUpdate: StateFlow<CheckUpdateResult?> = _availableUpdate.asStateFlow()
+    private var launchUpdateCheckStarted = false
+
     // ---------- Keyword filtering ----------
     @Volatile
     private var keywordFilter: String = ""
@@ -113,6 +120,29 @@ class MainViewModel(
                 _uiState.update { it.copy(traffic = snapshot) }
             }
         }
+    }
+
+    fun checkForUpdatesOnLaunch() {
+        if (launchUpdateCheckStarted) return
+        launchUpdateCheckStarted = true
+
+        viewModelScope.launch {
+            try {
+                val includePreRelease = MmkvManager.decodeSettingsBool(
+                    AppConfig.PREF_CHECK_UPDATE_PRE_RELEASE,
+                    false,
+                )
+                UpdateCheckerManager.checkForUpdate(includePreRelease)
+                    .takeIf(CheckUpdateResult::hasUpdate)
+                    ?.let { _availableUpdate.value = it }
+            } catch (e: Exception) {
+                LogUtil.w(AppConfig.TAG, "Startup update check failed: ${e.message}")
+            }
+        }
+    }
+
+    fun dismissAvailableUpdate() {
+        _availableUpdate.value = null
     }
 
     private fun handleServiceEvent(event: MainServiceEvent) {
@@ -405,16 +435,36 @@ class MainViewModel(
         launchLoading {
             withContext(ioDispatcher) {
                 try {
-                    val (count, countSub) = dataSource.importBatchConfig(
+                    val result = dataSource.importBatchConfig(
                         configText, uiState.value.selectedGroupId, true
                     )
                     when {
-                        count > 0 -> {
-                            toast(dataSource.getString(R.string.title_import_config_count, count))
+                        result.configCount > 0 -> {
+                            toast(dataSource.getString(R.string.title_import_config_count, result.configCount))
                             setupGroupTab(forceRefresh = true)
                         }
 
-                        countSub > 0 -> setupGroupTab(forceRefresh = true)
+                        result.subscriptionCount > 0 && result.subscriptionUpdate.successCount > 0 -> {
+                            toast(
+                                dataSource.getString(
+                                    R.string.title_update_config_count,
+                                    result.subscriptionUpdate.configCount,
+                                )
+                            )
+                            setupGroupTab(forceRefresh = true)
+                            refreshSelectedGuid()
+                        }
+
+                        result.subscriptionCount > 0 -> toast(
+                            dataSource.getString(
+                                R.string.title_update_subscription_result,
+                                result.subscriptionUpdate.configCount,
+                                result.subscriptionUpdate.successCount,
+                                result.subscriptionUpdate.failureCount,
+                                result.subscriptionUpdate.skipCount,
+                            )
+                        )
+
                         else -> toastError(R.string.toast_failure)
                     }
                 } catch (cancelled: CancellationException) {

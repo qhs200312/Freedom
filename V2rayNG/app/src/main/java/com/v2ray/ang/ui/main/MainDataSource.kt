@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.main
 
 import com.v2ray.ang.dto.GeoLocation
+import com.v2ray.ang.dto.BatchImportResult
 import com.v2ray.ang.dto.SubscriptionUpdateResult
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.TrafficSnapshot
@@ -50,7 +51,7 @@ interface MainDataSource : Closeable {
         server: String?,
         subscriptionId: String,
         updateUI: Boolean
-    ): Pair<Int, Int>
+    ): BatchImportResult
 
     fun updateConfigViaSubAll(): SubscriptionUpdateResult
     fun updateConfigViaSub(subscriptionCache: SubscriptionCache): SubscriptionUpdateResult

@@ -23,22 +23,27 @@ object UpdateCheckerManager {
 
         val proxyUsername = SettingsManager.getSocksUsername()
         val proxyPassword = SettingsManager.getSocksPassword()
+        val httpPort = SettingsManager.getHttpPort()
+        val proxyAvailable = HttpUtil.isTcpPortOpen(AppConfig.LOOPBACK, httpPort)
 
-        var response = HttpUtil.getUrlContent(
-            UrlContentRequest(
-                url = url,
-                timeout = 5000
-            )
-        )
-        if (response.isNullOrEmpty()) {
-            val httpPort = SettingsManager.getHttpPort()
-            response = HttpUtil.getUrlContent(
+        var response = if (proxyAvailable) {
+            HttpUtil.getUrlContent(
                 UrlContentRequest(
                     url = url,
                     timeout = 5000,
                     httpPort = httpPort,
                     proxyUsername = proxyUsername,
                     proxyPassword = proxyPassword
+                )
+            )
+        } else {
+            null
+        }
+        if (response.isNullOrEmpty()) {
+            response = HttpUtil.getUrlContent(
+                UrlContentRequest(
+                    url = url,
+                    timeout = 5000
                 )
             )
                 ?: throw IllegalStateException("Failed to get response")

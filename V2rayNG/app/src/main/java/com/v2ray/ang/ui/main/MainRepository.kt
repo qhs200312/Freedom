@@ -211,7 +211,7 @@ class MainRepository(
         server: String?,
         subscriptionId: String,
         updateUI: Boolean
-    ): Pair<Int, Int> = AngConfigManager.importBatchConfig(server, subscriptionId, updateUI)
+    ) = AngConfigManager.importBatchConfig(server, subscriptionId, updateUI)
 
     override fun updateConfigViaSubAll(): SubscriptionUpdateResult =
         AngConfigManager.updateConfigViaSubAll()

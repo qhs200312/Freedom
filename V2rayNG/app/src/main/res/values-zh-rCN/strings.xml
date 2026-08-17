@@ -407,6 +407,7 @@
     <string name="update_now">立即更新</string>
     <string name="update_check_pre_release">检查 Pre-release</string>
     <string name="update_checking_for_update">正在检查更新中…</string>
+    <string name="update_proxy_required">检查和下载更新需要开启代理。</string>
 
     <string name="title_policy_group_type">策略组类型</string>
     <string name="title_policy_group_subscription_id">来自订阅分组</string>

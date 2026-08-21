@@ -3,22 +3,14 @@ package com.v2ray.ang.util
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
 import com.google.zxing.EncodeHintType
-import com.google.zxing.NotFoundException
 import com.google.zxing.RGBLuminanceSource
-import com.google.zxing.common.GlobalHistogramBinarizer
-import com.google.zxing.qrcode.QRCodeReader
 import com.google.zxing.qrcode.QRCodeWriter
-import java.util.EnumMap
 
 /**
  * QR code decoder utility.
  */
 object QRCodeDecoder {
-    val HINTS: MutableMap<DecodeHintType, Any?> = EnumMap(DecodeHintType::class.java)
-
     /**
      * Creates a QR code bitmap from the given text.
      *
@@ -62,13 +54,7 @@ object QRCodeDecoder {
                     it.getPixels(array, 0, it.width, 0, 0, it.width, it.height)
                 }
                 val source = RGBLuminanceSource(it.width, it.height, pixels)
-                val qrReader = QRCodeReader()
-
-                try {
-                    qrReader.decode(BinaryBitmap(GlobalHistogramBinarizer(source)), HINTS).text
-                } catch (e: NotFoundException) {
-                    qrReader.decode(BinaryBitmap(GlobalHistogramBinarizer(source.invert())), HINTS).text
-                }
+                QrLuminanceDecoder.decode(source.matrix, source.width, source.height)
             }.getOrNull()
         }
     }
@@ -94,12 +80,5 @@ object QRCodeDecoder {
         } catch (e: Exception) {
             null
         }
-    }
-
-    init {
-        // Keep decoding hints focused on QR codes and enable TRY_HARDER + UTF-8 charset for better success rate.
-        HINTS[DecodeHintType.TRY_HARDER] = true
-        HINTS[DecodeHintType.POSSIBLE_FORMATS] = listOf(BarcodeFormat.QR_CODE)
-        HINTS[DecodeHintType.CHARACTER_SET] = Charsets.UTF_8.name()
     }
 }

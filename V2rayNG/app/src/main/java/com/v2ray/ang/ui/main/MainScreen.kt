@@ -1,11 +1,6 @@
 package com.v2ray.ang.ui.main
 
 import android.app.Activity
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,27 +8,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -47,14 +31,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -67,15 +46,6 @@ import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-
-private enum class MainDestination(
-    @StringRes val labelRes: Int,
-    @DrawableRes val iconRes: Int,
-) {
-    Dashboard(R.string.main_nav_dashboard, R.drawable.ic_dashboard_24dp),
-    Nodes(R.string.main_nav_nodes, R.drawable.ic_dns_24dp),
-    Settings(R.string.main_nav_settings, R.drawable.ic_settings_24dp),
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +64,9 @@ fun MainScreen(
     val shareQRCodeBitmap = uiState.shareQRCodeBitmap
     val dashboardContentTopPadding =
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp
+    val navigationContentBottomPadding =
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+            MainNavigationContentClearance
     val rootView = LocalView.current
     val context = LocalContext.current
     val darkTheme = LocalDarkTheme.current
@@ -250,21 +223,10 @@ fun MainScreen(
         )
     }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            MainBottomNavigation(
-                selectedDestination = selectedDestination,
-                onDestinationSelected = { destination ->
-                    selectedDestinationIndex = destination.ordinal
-                },
-            )
-        },
-    ) { innerPadding ->
+    Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+                .fillMaxSize(),
         ) {
             when (selectedDestination) {
                 MainDestination.Dashboard -> {
@@ -273,6 +235,7 @@ fun MainScreen(
                         onAction = onAction,
                         modifier = Modifier.fillMaxSize(),
                         mapContentTopPadding = dashboardContentTopPadding,
+                        contentBottomPadding = navigationContentBottomPadding,
                     )
                 }
 
@@ -369,7 +332,7 @@ fun MainScreen(
                                         start = 0.dp,
                                         top = 0.dp,
                                         end = 0.dp,
-                                        bottom = 16.dp
+                                        bottom = navigationContentBottomPadding,
                                     )
                                 )
                             }
@@ -383,106 +346,17 @@ fun MainScreen(
                         onAction = onAction,
                         onNavigate = onNavigate,
                         modifier = Modifier.fillMaxSize(),
+                        contentBottomPadding = navigationContentBottomPadding,
                     )
                 }
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MainBottomNavigation(
-    selectedDestination: MainDestination,
-    onDestinationSelected: (MainDestination) -> Unit,
-) {
-    val darkTheme = LocalDarkTheme.current
-    Surface(color = Color.Transparent) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(26.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
-            shadowElevation = 12.dp,
-        ) {
-            NavigationBar(
-                modifier = Modifier.height(70.dp),
-                containerColor = Color.Transparent,
-                tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-            ) {
-                MainDestination.values().forEach { destination ->
-                    val selected = destination == selectedDestination
-                    val indicatorShape = RoundedCornerShape(20.dp)
-                    val glassBrush = Brush.verticalGradient(
-                        colors = if (darkTheme) {
-                            listOf(
-                                Color.White.copy(alpha = 0.18f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f),
-                            )
-                        } else {
-                            listOf(
-                                Color.White.copy(alpha = 0.78f),
-                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.46f),
-                            )
-                        },
-                    )
-                    val glassBorder = Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = if (darkTheme) 0.32f else 0.92f),
-                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f),
-                        )
-                    )
-
-                    CompositionLocalProvider(LocalRippleConfiguration provides null) {
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { onDestinationSelected(destination) },
-                            icon = {
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = 76.dp, height = 56.dp)
-                                        .then(
-                                            if (selected) {
-                                                Modifier
-                                                    .clip(indicatorShape)
-                                                    .background(glassBrush)
-                                                    .border(0.8.dp, glassBorder, indicatorShape)
-                                            } else {
-                                                Modifier
-                                            }
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(destination.iconRes),
-                                            contentDescription = stringResource(destination.labelRes),
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                        Text(
-                                            text = stringResource(destination.labelRes),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                        )
-                                    }
-                                }
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.secondary,
-                                selectedTextColor = MaterialTheme.colorScheme.secondary,
-                                indicatorColor = Color.Transparent,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
+        MainBottomNavigation(
+            selectedDestination = selectedDestination,
+            onDestinationSelected = { destination ->
+                selectedDestinationIndex = destination.ordinal
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }

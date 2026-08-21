@@ -54,13 +54,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.PlanarYUVLuminanceSource
-import com.google.zxing.common.HybridBinarizer
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.enums.PermissionType
@@ -69,11 +64,14 @@ import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.QRCodeDecoder
+import com.v2ray.ang.util.QrLuminanceDecoder
+import com.v2ray.ang.util.YuvLuminanceExtractor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import android.util.Size as TargetSize
-
-private val qrReader = MultiFormatReader()
 
 class ScannerActivity : HelperBaseComponentActivity() {
 
@@ -116,19 +114,26 @@ class ScannerActivity : HelperBaseComponentActivity() {
     private fun showFileChooser() {
         launchFileChooser("image/*") { uri ->
             if (uri == null) return@launchFileChooser
-            try {
-                val inputStream = contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-                val text = QRCodeDecoder.syncDecodeQRCode(bitmap)
+            lifecycleScope.launch {
+                val text = withContext(Dispatchers.Default) {
+                    runCatching {
+                        contentResolver.openInputStream(uri)?.use { inputStream ->
+                            val bitmap = BitmapFactory.decodeStream(inputStream)
+                            try {
+                                QRCodeDecoder.syncDecodeQRCode(bitmap)
+                            } finally {
+                                bitmap?.recycle()
+                            }
+                        }
+                    }.onFailure { error ->
+                        LogUtil.e(AppConfig.TAG, "Failed to decode QR code from file", error)
+                    }.getOrNull()
+                }
                 if (text.isNullOrEmpty()) {
                     toast(R.string.toast_decoding_failed)
                 } else {
                     finished(text)
                 }
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.TAG, "Failed to decode QR code from file", e)
-                toast(R.string.toast_decoding_failed)
             }
         }
     }
@@ -342,7 +347,7 @@ fun CameraXPreview(
         val resolutionSelector = ResolutionSelector.Builder()
             .setResolutionStrategy(
                 ResolutionStrategy(
-                    TargetSize(1280, 720),
+                    TargetSize(1920, 1080),
                     ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
                 )
             )
@@ -410,24 +415,17 @@ private fun processImageProxy(
         return
     }
     try {
-        val buffer = imageProxy.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
         val width = imageProxy.width
         val height = imageProxy.height
-        val source = PlanarYUVLuminanceSource(
-            bytes, width, height,
-            0, 0, width, height,
-            false
+        val plane = imageProxy.planes[0]
+        val bytes = YuvLuminanceExtractor.extract(
+            buffer = plane.buffer,
+            width = width,
+            height = height,
+            rowStride = plane.rowStride,
+            pixelStride = plane.pixelStride
         )
-        val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
-        val hints = mapOf(
-            DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-            DecodeHintType.TRY_HARDER to true,
-            DecodeHintType.CHARACTER_SET to "UTF-8"
-        )
-        val result = qrReader.decode(binaryBitmap, hints)
-        val text = result.text
+        val text = QrLuminanceDecoder.decode(bytes, width, height)
         if (!text.isNullOrEmpty() && foundResult.compareAndSet(false, true)) {
             onResult(text)
         }

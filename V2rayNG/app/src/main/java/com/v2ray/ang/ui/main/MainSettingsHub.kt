@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.v2ray.ang.R
 import com.v2ray.ang.enums.ProxyMode
@@ -52,10 +53,16 @@ fun MainSettingsHub(
     onAction: (MainAction) -> Unit,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
+    contentBottomPadding: Dp = 24.dp,
 ) {
     LazyColumn(
         modifier = modifier.statusBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, top = 22.dp, end = 16.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = 22.dp,
+            end = 16.dp,
+            bottom = contentBottomPadding,
+        ),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item {

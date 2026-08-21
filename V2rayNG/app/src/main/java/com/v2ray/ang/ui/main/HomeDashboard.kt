@@ -78,6 +78,7 @@ fun HomeDashboard(
     onAction: (MainAction) -> Unit,
     modifier: Modifier = Modifier,
     mapContentTopPadding: Dp = 16.dp,
+    contentBottomPadding: Dp = 20.dp,
 ) {
     val listState = rememberLazyListState()
     val isDarkTheme = LocalDarkTheme.current
@@ -92,7 +93,7 @@ fun HomeDashboard(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             state = listState,
-            contentPadding = PaddingValues(bottom = 20.dp),
+            contentPadding = PaddingValues(bottom = contentBottomPadding),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {

@@ -5,4 +5,5 @@ data class ServersCache(
     val profile: ProfileItem,
     val testDelayMillis: Long = 0L,
     val testDelayString: String = "",
+    val subscriptionRemarks: String = "",
 )

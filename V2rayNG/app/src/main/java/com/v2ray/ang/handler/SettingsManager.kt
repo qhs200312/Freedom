@@ -623,12 +623,12 @@ object SettingsManager {
     /**
      * Ensures the default subscription exists for ungrouped servers.
      * This subscription is used internally to store servers without a subscription.
-     * Made public for migration in SettingsManager.
+     * The caller can provide a localized label when recreating the local group.
      */
-    private fun ensureDefaultSubscription() {
+    fun ensureDefaultSubscription(remarks: String = "Local") {
         if (decodeSubscription(DEFAULT_SUBSCRIPTION_ID) == null) {
             val defaultSub = SubscriptionItem(
-                remarks = "Default",
+                remarks = remarks,
             )
             encodeSubscription(DEFAULT_SUBSCRIPTION_ID, defaultSub)
 

@@ -31,6 +31,7 @@ interface MainDataSource : Closeable {
 
     fun getSubscriptions(): List<SubscriptionCache>
     fun getSubscriptionItem(id: String): SubscriptionItem?
+    fun ensureLocalSubscription()
 
     fun getServerGuidList(groupId: String): List<String>
     fun decodeServerConfig(guid: String): ProfileItem?

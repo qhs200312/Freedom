@@ -296,11 +296,18 @@ class MainViewModel(
             currentCoroutineContext().ensureActive()
             val profile = dataSource.decodeServerConfig(guid) ?: return@mapNotNull null
             val affiliation = dataSource.decodeAffiliationInfo(guid)
+            val subscriptionId = profile.subscriptionId.ifBlank { AppConfig.DEFAULT_SUBSCRIPTION_ID }
+            val subscriptionRemarks = if (subscriptionId == AppConfig.DEFAULT_SUBSCRIPTION_ID) {
+                dataSource.getString(R.string.subscription_group_local)
+            } else {
+                dataSource.getSubscriptionItem(subscriptionId)?.remarks.orEmpty()
+            }
             ServersCache(
                 guid = guid,
                 profile = profile.copy(),
                 testDelayMillis = affiliation?.testDelayMillis ?: 0L,
-                testDelayString = affiliation?.getTestDelayString().orEmpty()
+                testDelayString = affiliation?.getTestDelayString().orEmpty(),
+                subscriptionRemarks = subscriptionRemarks,
             )
         }
 
@@ -436,10 +443,11 @@ class MainViewModel(
             withContext(ioDispatcher) {
                 try {
                     val result = dataSource.importBatchConfig(
-                        configText, uiState.value.selectedGroupId, true
+                        configText, AppConfig.DEFAULT_SUBSCRIPTION_ID, true
                     )
                     when {
                         result.configCount > 0 -> {
+                            dataSource.ensureLocalSubscription()
                             toast(dataSource.getString(R.string.title_import_config_count, result.configCount))
                             setupGroupTab(forceRefresh = true)
                         }

@@ -237,7 +237,7 @@ class MainActivity : HelperBaseComponentActivity() {
                 putExtra("createConfigType", createConfigType)
             }
         }.apply {
-            putExtra("subscriptionId", mainViewModel.uiState.value.selectedGroupId)
+            putExtra("subscriptionId", AppConfig.DEFAULT_SUBSCRIPTION_ID)
         }
         profileEditorLauncher.launch(intent)
     }

@@ -168,6 +168,10 @@ class MainRepository(
     override fun getSubscriptionItem(id: String): SubscriptionItem? =
         MmkvManager.decodeSubscription(id)
 
+    override fun ensureLocalSubscription() {
+        SettingsManager.ensureDefaultSubscription(app.getString(R.string.subscription_group_local))
+    }
+
     override fun getServerGuidList(groupId: String): List<String> =
         if (groupId.isEmpty()) {
             MmkvManager.decodeAllServerList()

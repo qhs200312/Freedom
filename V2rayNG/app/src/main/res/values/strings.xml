@@ -30,6 +30,7 @@
     <string name="menu_item_import_config_qrcode">Import from QRcode</string>
     <string name="menu_item_import_config_clipboard">Import from Clipboard</string>
     <string name="menu_item_import_config_local">Import from locally</string>
+    <string name="subscription_group_local">Local nodes</string>
     <string name="menu_item_import_config_policy_group">Add [Policy group]</string>
     <string name="menu_item_import_config_proxy_chain">Add [Proxy chain]</string>
     <string name="menu_item_import_config_manually_vmess">Add [VMess]</string>

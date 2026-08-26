@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.REALITY
 import com.v2ray.ang.AppConfig.TLS
 import com.v2ray.ang.R
@@ -39,6 +40,7 @@ import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.CertificateFingerprintManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.DeleteConfirmDialog
@@ -435,6 +437,9 @@ abstract class BaseServerActivity : BaseComponentActivity() {
             config.subscriptionId = subscriptionId.orEmpty()
         }
         val savedGuid = MmkvManager.encodeServerConfig(editGuid, config)
+        if (config.subscriptionId == AppConfig.DEFAULT_SUBSCRIPTION_ID) {
+            SettingsManager.ensureDefaultSubscription(getString(R.string.subscription_group_local))
+        }
         toastSuccess(R.string.toast_success)
         ProfileEditorResult.run {
             finishSaved(savedGuid, isRunning)

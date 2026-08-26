@@ -446,6 +446,7 @@ object AngConfigManager {
         } else if (server.startsWith("[Interface]") && server.contains("[Peer]")) {
             try {
                 val config = WireguardFmt.parseWireguardConfFile(server) ?: return R.string.toast_incorrect_protocol
+                config.subscriptionId = subid
                 config.description = generateDescription(config)
                 if (!append) {
                     MmkvManager.removeServerViaSubid(subid)

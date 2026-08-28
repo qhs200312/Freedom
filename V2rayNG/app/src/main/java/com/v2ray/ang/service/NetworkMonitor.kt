@@ -33,6 +33,7 @@ class NetworkMonitor(
     }
 
     private var upstream: Network? = null
+    private var hasObservedNetwork = false
     private var handoverJob: Job? = null
     private var registered = false
 
@@ -56,9 +57,11 @@ class NetworkMonitor(
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val previous = upstream
+            val shouldReload = hasObservedNetwork && (previous == null || previous != network)
             upstream = network
+            hasObservedNetwork = true
             onUnderlyingNetworksChanged(arrayOf(network))
-            if (previous != null && previous != network) {
+            if (shouldReload) {
                 scheduleHandover(network)
             }
         }
@@ -98,6 +101,7 @@ class NetworkMonitor(
         handoverJob?.cancel()
         handoverJob = null
         upstream = null
+        hasObservedNetwork = false
         if (!registered) return
         registered = false
         try {

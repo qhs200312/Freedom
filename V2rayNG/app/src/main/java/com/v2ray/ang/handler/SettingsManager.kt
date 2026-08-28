@@ -44,6 +44,7 @@ object SettingsManager {
         ensureDefaultSettings()
         //ensureDefaultSubscription()
         initRoutingRulesets(context)
+        migrateGoogleProxyRules()
         removeUdp443BlockingRules()
         migrateServerListToSubscriptions()
         migrateHysteria2PinSHA256()
@@ -61,6 +62,53 @@ object SettingsManager {
         }
     }
 
+    private fun migrateGoogleProxyRules() {
+        val rulesets = MmkvManager.decodeRoutingRulesets() ?: return
+        if (ensureGoogleProxyCoverage(rulesets)) {
+            MmkvManager.encodeRoutingRulesets(rulesets)
+        }
+    }
+
+    internal fun ensureGoogleProxyCoverage(rulesets: MutableList<RulesetItem>): Boolean {
+        val googleRuleIndex = rulesets.indexOfFirst { rule ->
+            rule.outboundTag == AppConfig.TAG_PROXY &&
+                rule.domain.orEmpty().any { it.equals(GOOGLE_GEOSITE, ignoreCase = true) }
+        }
+        if (googleRuleIndex < 0) return false
+
+        var changed = false
+        val googleRule = rulesets[googleRuleIndex]
+        val domains = googleRule.domain.orEmpty().toMutableList()
+        val normalizedDomains = domains.mapTo(mutableSetOf()) { it.trim().lowercase(Locale.ROOT) }
+        GOOGLE_PROXY_DOMAINS.forEach { domain ->
+            if (normalizedDomains.add(domain.lowercase(Locale.ROOT))) {
+                domains.add(domain)
+                changed = true
+            }
+        }
+        if (changed) {
+            googleRule.domain = domains
+        }
+
+        val hasGoogleIpRule = rulesets.any { rule ->
+            rule.outboundTag == AppConfig.TAG_PROXY &&
+                rule.ip.orEmpty().any { it.equals(GOOGLE_GEOIP, ignoreCase = true) }
+        }
+        if (googleRule.enabled && !hasGoogleIpRule) {
+            rulesets.add(
+                googleRuleIndex + 1,
+                RulesetItem(
+                    remarks = "代理Google IP",
+                    ip = listOf(GOOGLE_GEOIP),
+                    outboundTag = AppConfig.TAG_PROXY,
+                )
+            )
+            changed = true
+        }
+
+        return changed
+    }
+
     private fun removeUdp443BlockingRules() {
         val rulesets = MmkvManager.decodeRoutingRulesets() ?: return
         val changed = rulesets.removeAll {
@@ -70,6 +118,22 @@ object SettingsManager {
         }
         if (changed) MmkvManager.encodeRoutingRulesets(rulesets)
     }
+
+    private const val GOOGLE_GEOSITE = "geosite:google"
+    private const val GOOGLE_GEOIP = "geoip:google"
+    private val GOOGLE_PROXY_DOMAINS = listOf(
+        GOOGLE_GEOSITE,
+        "domain:google.com",
+        "domain:googleapis.com",
+        "domain:googleapis.cn",
+        "domain:gstatic.com",
+        "domain:googleusercontent.com",
+        "domain:ggpht.com",
+        "domain:googlevideo.com",
+        "domain:youtube.com",
+        "domain:youtu.be",
+        "domain:ytimg.com",
+    )
 
     /**
      * Get preset routing rulesets.

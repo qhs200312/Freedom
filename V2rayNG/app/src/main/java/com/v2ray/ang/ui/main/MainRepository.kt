@@ -152,17 +152,17 @@ class MainRepository(
     override fun getString(resId: Int, vararg formatArgs: Any): String = app.getString(resId, *formatArgs)
 
     override fun getSubscriptions(): List<SubscriptionCache> {
-        val result = mutableListOf<SubscriptionCache>()
         if (isGroupAllDisplayEnabled()) {
-            result += SubscriptionCache(
-                guid = "",
-                subscription = SubscriptionItem().apply {
-                    remarks = app.getString(R.string.filter_config_all)
-                }
+            return listOf(
+                SubscriptionCache(
+                    guid = "",
+                    subscription = SubscriptionItem().apply {
+                        remarks = app.getString(R.string.filter_config_all)
+                    }
+                )
             )
         }
-        result += MmkvManager.decodeSubscriptions()
-        return result
+        return MmkvManager.decodeSubscriptions()
     }
 
     override fun getSubscriptionItem(id: String): SubscriptionItem? =
@@ -252,6 +252,19 @@ class MainRepository(
         SpeedtestManager.getIPInfo(useProxy)
 
     override fun syncSubscriptions() {
+        SubscriptionUpdater.sync(app)
+    }
+
+    override fun updateSubscriptionsOnLaunch() {
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_UPDATE_SUBSCRIPTION_ON_START, false) != true) {
+            SubscriptionUpdater.sync(app)
+            return
+        }
+        MmkvManager.decodeSubscriptions()
+            .filter { it.subscription.enabled && it.subscription.autoUpdate && it.subscription.url.isNotEmpty() }
+            .forEach { subscription ->
+                AngConfigManager.updateConfigViaSub(subscription)
+            }
         SubscriptionUpdater.sync(app)
     }
 

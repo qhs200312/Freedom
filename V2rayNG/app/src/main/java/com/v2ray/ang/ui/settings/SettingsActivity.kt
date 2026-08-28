@@ -1,6 +1,12 @@
 package com.v2ray.ang.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -53,8 +59,43 @@ class SettingsActivity : BaseComponentActivity() {
         SettingsScreen(
             viewModel = viewModel,
             onBackClick = { finish() },
-            onModeHelpClicked = { Utils.openUri(this, AppConfig.APP_WIKI_MODE) }
+            onModeHelpClicked = { Utils.openUri(this, AppConfig.APP_WIKI_MODE) },
+            onAutoStartPermissionClicked = ::openAutoStartSettings,
         )
+    }
+
+    private fun openAutoStartSettings() {
+        val intents = listOf(
+            Intent("miui.intent.action.OP_AUTO_START").apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+                putExtra("extra_pkgname", packageName)
+            },
+            Intent().apply {
+                component = ComponentName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                )
+            },
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"),
+            ),
+        )
+
+        intents.forEach { intent ->
+            try {
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                    return
+                }
+            } catch (_: ActivityNotFoundException) {
+                // Try the next system settings entry point.
+            } catch (_: SecurityException) {
+                // Some vendor settings activities are present but not exported.
+            }
+        }
+
+        Toast.makeText(this, R.string.toast_auto_start_settings_unavailable, Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -63,7 +104,8 @@ class SettingsActivity : BaseComponentActivity() {
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
-    onModeHelpClicked: () -> Unit
+    onModeHelpClicked: () -> Unit,
+    onAutoStartPermissionClicked: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -112,8 +154,8 @@ fun SettingsScreen(
     var dynamicSocksPort by rememberMmkvBool(AppConfig.PREF_DYNAMIC_SOCKS_PORT, false)
     var socksUsername by rememberMmkvString(AppConfig.PREF_SOCKS_USERNAME, "")
     var socksPassword by rememberMmkvString(AppConfig.PREF_SOCKS_PASSWORD, "")
-    var socksEnableUdp by rememberMmkvBool(AppConfig.PREF_SOCKS_ENABLE_UDP, false)
     var proxySharing by rememberMmkvBool(AppConfig.PREF_PROXY_SHARING, false)
+    var updateSubscriptionOnStart by rememberMmkvBool(AppConfig.PREF_UPDATE_SUBSCRIPTION_ON_START, false)
 
     var speedEnabled by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, true)
     var confirmRemove by rememberMmkvBool(AppConfig.PREF_CONFIRM_REMOVE, false)
@@ -402,11 +444,10 @@ fun SettingsScreen(
                     onValueChanged = { socksPassword = it }
                 )
                 SettingsSwitchItem(
-                    title = stringResource(R.string.title_pref_socks_enable_udp),
-                    summary = stringResource(R.string.summary_pref_socks_enable_udp),
-                    checked = socksEnableUdp,
-                    enabled = effectiveLocalProxy,
-                    onCheckedChange = { socksEnableUdp = it }
+                    title = stringResource(R.string.title_pref_update_subscription_on_start),
+                    summary = stringResource(R.string.summary_pref_update_subscription_on_start),
+                    checked = updateSubscriptionOnStart,
+                    onCheckedChange = { updateSubscriptionOnStart = it }
                 )
                 SettingsEditItem(
                     title = stringResource(R.string.title_pref_remote_dns),
@@ -570,6 +611,11 @@ fun SettingsScreen(
                     summary = stringResource(R.string.summary_pref_is_booted),
                     checked = isBooted,
                     onCheckedChange = { isBooted = it }
+                )
+                SettingsMenuItem(
+                    title = stringResource(R.string.title_auto_start_permission),
+                    subtitle = stringResource(R.string.summary_auto_start_permission),
+                    onClick = onAutoStartPermissionClicked,
                 )
                 SettingsEditItem(
                     title = stringResource(R.string.title_pref_delay_test_url),

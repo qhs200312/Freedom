@@ -314,7 +314,8 @@ fun MainScreen(
                                     groupId = group.id,
                                     mainViewModel = mainViewModel,
                                     selectedGuid = selectedGuid,
-                                    doubleColumnDisplay = doubleColumnDisplay,
+                                    // The aggregate "All" page stays a compact single-column list.
+                                    doubleColumnDisplay = doubleColumnDisplay && group.id.isNotEmpty(),
                                     confirmRemove = confirmRemove,
                                     searchQuery = searchQuery,
                                     lazyListStates = lazyListStates,

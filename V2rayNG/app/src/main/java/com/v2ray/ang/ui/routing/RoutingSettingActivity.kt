@@ -49,6 +49,7 @@ import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
@@ -56,6 +57,7 @@ import com.v2ray.ang.ui.compose.ItemDivider
 import com.v2ray.ang.ui.compose.ReorderableListItem
 import com.v2ray.ang.ui.compose.SelectListDialog
 import com.v2ray.ang.ui.compose.SettingsListItem
+import com.v2ray.ang.ui.compose.SettingsSwitchItem
 import com.v2ray.ang.ui.compose.colorConfigType
 import com.v2ray.ang.ui.compose.colorFabActive
 import com.v2ray.ang.ui.compose.verticalScrollbar
@@ -188,6 +190,7 @@ fun RoutingSettingScreen(
 ) {
     val rulesets by viewModel.rulesetsFlow.collectAsStateWithLifecycle()
     val domainStrategy by domainStrategyState.collectAsState()
+    var disableNonProxiedUdp by rememberMmkvBool(AppConfig.PREF_DISABLE_NON_PROXIED_UDP, false)
     var showMenu by remember { mutableStateOf(false) }
     var showPresetDialog by remember { mutableStateOf(false) }
 
@@ -263,6 +266,14 @@ fun RoutingSettingScreen(
                     values = domainStrategies,
                     selectedValue = domainStrategy,
                     onSelected = { onDomainStrategySelected(it) }
+                )
+            }
+            item(key = "disable_non_proxied_udp") {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_disable_non_proxied_udp),
+                    summary = stringResource(R.string.summary_pref_disable_non_proxied_udp),
+                    checked = disableNonProxiedUdp,
+                    onCheckedChange = { disableNonProxiedUdp = it }
                 )
             }
             item {

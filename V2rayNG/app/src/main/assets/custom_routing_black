@@ -10,7 +10,17 @@
     "remarks": "代理Google",
     "outboundTag": "proxy",
     "domain": [
-      "geosite:google"
+      "geosite:google",
+      "domain:google.com",
+      "domain:googleapis.com",
+      "domain:googleapis.cn",
+      "domain:gstatic.com",
+      "domain:googleusercontent.com",
+      "domain:ggpht.com",
+      "domain:googlevideo.com",
+      "domain:youtube.com",
+      "domain:youtu.be",
+      "domain:ytimg.com"
     ]
   },
   {

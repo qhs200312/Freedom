@@ -25,6 +25,7 @@ import com.v2ray.ang.util.Utils
 object CoreConfigManager {
     private var initConfigCache: String? = null
     private var initConfigCacheWithTun: String? = null
+    private val USER_TRAFFIC_INBOUND_TAGS = listOf("socks", "tun", "http")
 
     //region get config function
 
@@ -1191,7 +1192,52 @@ object CoreConfigManager {
             rule.outboundTag = AppConfig.TAG_PROXY
         }
 
-        v2rayConfig.routing.rules.add(rule)
+        appendRuleWithNonProxiedUdpPolicy(rule, v2rayConfig)
+    }
+
+    private fun appendRuleWithNonProxiedUdpPolicy(
+        rule: V2rayConfig.RoutingBean.RulesBean,
+        v2rayConfig: V2rayConfig,
+    ) {
+        val disableNonProxiedUdp =
+            MmkvManager.decodeSettingsBool(AppConfig.PREF_DISABLE_NON_PROXIED_UDP, false) == true
+        v2rayConfig.routing.rules.addAll(applyNonProxiedUdpPolicy(rule, disableNonProxiedUdp))
+    }
+
+    internal fun applyNonProxiedUdpPolicy(
+        rule: V2rayConfig.RoutingBean.RulesBean,
+        enabled: Boolean,
+    ): List<V2rayConfig.RoutingBean.RulesBean> {
+        if (!enabled || rule.outboundTag != AppConfig.TAG_DIRECT) return listOf(rule)
+
+        val networks = rule.network
+            ?.split(',')
+            ?.map { it.trim().lowercase() }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            .orEmpty()
+        if (networks.any { it != "tcp" && it != "udp" }) return listOf(rule)
+
+        val userInboundTags = rule.inboundTag
+            ?.filter { it in USER_TRAFFIC_INBOUND_TAGS }
+            ?: USER_TRAFFIC_INBOUND_TAGS
+        if (userInboundTags.isEmpty()) return listOf(rule)
+
+        val matchesTcp = networks.isEmpty() || "tcp" in networks
+        val matchesUdp = networks.isEmpty() || "udp" in networks
+
+        val result = mutableListOf<V2rayConfig.RoutingBean.RulesBean>()
+        if (matchesUdp) {
+            result += rule.copy(
+                network = "udp",
+                outboundTag = AppConfig.TAG_BLOCKED,
+                inboundTag = userInboundTags,
+            )
+        }
+        if (matchesTcp) {
+            result += rule.copy(network = "tcp")
+        }
+        return result
     }
 
 

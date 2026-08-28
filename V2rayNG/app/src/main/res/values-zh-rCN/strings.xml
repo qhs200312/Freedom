@@ -170,6 +170,9 @@
     <string name="summary_pref_per_app_proxy">常规: 勾选的 App 被代理, 未勾选的直连;\n绕行模式: 勾选的 App 直连, 未勾选的被代理.\n不明白者在菜单中选择自动选中需代理应用</string>
     <string name="title_pref_is_booted">开机时自动连接</string>
     <string name="summary_pref_is_booted">开机时自动连接选择的服务器，可能会不成功</string>
+    <string name="title_auto_start_permission">申请自启动权限</string>
+    <string name="summary_auto_start_permission">打开系统自启动管理，允许 Freedom 在开机后运行</string>
+    <string name="toast_auto_start_settings_unavailable">无法打开系统自启动设置</string>
 
     <string name="subscription_updater_job_tips">任务将在后台运行，在通知中会显示进度信息</string>
     <string name="title_pref_auto_test_after_update_subscription">更新订阅后自动测试</string>
@@ -242,6 +245,10 @@
     <string name="summary_pref_enable_local_proxy">不开启时没有 socks 代理，无法通过代理更新订阅等</string>
     <string name="title_pref_socks_enable_udp">SOCKS5 UDP</string>
     <string name="summary_pref_socks_enable_udp">使用 UDP 时，socks5 认证并不完全安全</string>
+    <string name="title_pref_update_subscription_on_start">打开软件时更新订阅</string>
+    <string name="summary_pref_update_subscription_on_start">打开软件时自动更新已启用的订阅。</string>
+    <string name="title_pref_disable_non_proxied_udp">禁用非代理 UDP</string>
+    <string name="summary_pref_disable_non_proxied_udp">阻止命中直连规则的 UDP 流量，同时保留通过代理的 UDP。</string>
      <string name="summary_pref_socks_port">本地代理端口</string>
      <string name="title_pref_dynamic_socks_port">启用动态本地代理端口</string>
      <string name="summary_pref_dynamic_socks_port">每次生成 inbound 时随机生成一个本地代理端口</string>

@@ -1,89 +1,91 @@
-# Freedom
+<div align="center">
+  <img src="V2rayNG/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="104" alt="Freedom icon">
+  <h1>Freedom</h1>
+  <p><strong>清晰、稳定，为 Android 日常连接而设计。</strong></p>
+  <p>A focused Android proxy client built for reliable everyday connectivity.</p>
 
-A V2Ray client for Android, support [Xray core](https://github.com/XTLS/Xray-core) and [v2fly core](https://github.com/v2fly/v2ray-core)
-
-[![API](https://img.shields.io/badge/API-24%2B-yellow.svg?style=flat)](https://developer.android.com/about/versions/lollipop)
-[![Kotlin Version](https://img.shields.io/badge/Kotlin-2.4.0-blue.svg)](https://kotlinlang.org)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/qhs200312/Freedom)](https://github.com/qhs200312/Freedom/commits/master)
-[![GitHub Releases](https://img.shields.io/github/downloads/qhs200312/Freedom/latest/total?logo=github)](https://github.com/qhs200312/Freedom/releases)
-[![Chat on Telegram](https://img.shields.io/badge/Chat%20on-Telegram-brightgreen.svg)](https://t.me/v2rayn)
-
----
-
-## Download / 下载
-
-Download the latest release here:
-
-在这里下载最新版本：
-
-[https://github.com/qhs200312/Freedom/releases](https://github.com/qhs200312/Freedom/releases)
-
-> [!TIP]
-> v2rayNG is the mobile version. For the desktop version, please visit the v2rayN \
-> v2rayNG 是手机版，电脑版请访问 v2rayN
->
-> https://github.com/2dust/v2rayN
+  [![Latest release](https://img.shields.io/github/v/release/qhs200312/Freedom?display_name=tag&style=flat-square)](https://github.com/qhs200312/Freedom/releases/latest)
+  [![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square)](https://developer.android.com)
+  [![License](https://img.shields.io/github/license/qhs200312/Freedom?style=flat-square)](LICENSE)
+  [![Downloads](https://img.shields.io/github/downloads/qhs200312/Freedom/total?logo=github&style=flat-square)](https://github.com/qhs200312/Freedom/releases)
+</div>
 
 ---
 
-### Geoip and Geosite
+Freedom 是一款独立维护的 Android 网络代理与连接管理工具。它把节点、订阅、路由、DNS 和运行状态整理在一套简洁的界面里，重点解决移动网络切换、连接恢复和日常使用中的稳定性问题。
 
-- geoip.dat and geosite.dat files are in `Android/data/com.v2ray.ang/files/assets` (path may differ on some Android device)
-- download feature will get enhanced version in this [repo](https://github.com/Loyalsoldier/v2ray-rules-dat) (note: it needs a working proxy)
-- latest official [domain list](https://github.com/Loyalsoldier/v2ray-rules-dat) and [ip list](https://github.com/Loyalsoldier/geoip) can be imported manually
-- possible to use a third-party dat file in the same folder, like [h2y](https://guide.v2fly.org/routing/sitedata.html#%E5%A4%96%E7%BD%AE%E7%9A%84%E5%9F%9F%E5%90%8D%E6%96%87%E4%BB%B6)
+> [!IMPORTANT]
+> Freedom 由本仓库独立开发和发布。本项目只代表 Freedom 及其维护者，不代表任何其他客户端、组织或开发团队。
 
-More in our [wiki](https://github.com/2dust/v2rayNG/wiki)
+## 功能特点
 
-### Geoip 与 Geosite
+- **多种运行模式**：支持 Android VPN、Root TUN 和 TProxy，适应不同设备环境。
+- **清晰的连接状态**：首页展示连接状态、出口 IP、位置、延迟、实时速率和累计流量。
+- **可靠的订阅管理**：支持订阅分组、扫码导入和本地节点；更新订阅时不会误删手动添加的节点。
+- **灵活的路由与 DNS**：提供预设和自定义路由、本地 DNS、国内外 DNS 分流及非代理 UDP 控制。
+- **移动网络恢复**：网络切换或短暂断流后自动尝试恢复连接，减少手动重启服务。
+- **按需自动化**：可选择打开应用时更新订阅、开机自动连接，并可直接进入系统自启动权限设置。
+- **快速控制**：支持快捷设置磁贴和桌面组件，常用连接操作不必反复进入应用。
 
-- geoip.dat 和 geosite.dat 文件位于 `Android/data/com.v2ray.ang/files/assets`（部分设备路径可能不同）
-- 下载功能将获取该 [仓库](https://github.com/Loyalsoldier/v2ray-rules-dat) 中的增强版本（注意：此功能需要一个可用的代理）
-- 最新官方 [域名列表](https://github.com/Loyalsoldier/v2ray-rules-dat) 和 [IP 列表](https://github.com/Loyalsoldier/geoip) 可手动导入
-- 也可在同一文件夹中使用第三方 dat 文件，例如 [h2y](https://guide.v2fly.org/routing/sitedata.html#%E5%A4%96%E7%BD%AE%E7%9A%84%E5%9F%9F%E5%90%8D%E6%96%87%E4%BB%B6)
+## 下载
 
-更多内容请见我们的 [wiki](https://github.com/2dust/v2rayNG/wiki)
+从 [GitHub Releases](https://github.com/qhs200312/Freedom/releases/latest) 获取最新正式版。
 
----
-
-## Development guide / 开发指南
-
-### Note
-
-- Android project under the V2rayNG folder can be compiled directly in Android Studio, or using the Gradle wrapper. But the v2ray core inside the aar is (probably) outdated.
-- The aar can be compiled from the Golang project [AndroidLibV2rayLite](https://github.com/2dust/AndroidLibV2rayLite) or [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite). For a quick start, read the guides for [Go Mobile](https://github.com/golang/go/wiki/Mobile) and [Makefiles for Go Developers](https://tutorialedge.net/golang/makefiles-for-go-developers/).
-- v2rayNG can run on Android Emulators. For WSA, VPN permission needs to be granted via `appops set [package name] ACTIVATE_VPN allow`.
-
-### 提示
-
-- V2rayNG 文件夹下的 Android 项目可直接在 Android Studio 中编译，或使用 Gradle wrapper 编译。但 aar 内置的 v2ray core（可能）已过时。
-- aar 可由 Golang 项目 [AndroidLibV2rayLite](https://github.com/2dust/AndroidLibV2rayLite) 或 [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite) 编译而成。快速入门可参考 [Go Mobile](https://github.com/golang/go/wiki/Mobile) 指南和 [Makefiles for Go Developers](https://tutorialedge.net/golang/makefiles-for-go-developers/)。
-- v2rayNG 可在 Android 模拟器上运行。对于 WSA，需要通过 `appops set [package name] ACTIVATE_VPN allow` 授予 VPN 权限。
-
----
-
-
-## GPG Verification / GPG 签名校验
-
-Release files are signed with GPG to verify authenticity and integrity, helping prevent mirror, ISP, or CDN hijacking.
-
-发布文件已使用 GPG 签名，可用于校验文件真实性与完整性，预防镜像站、运营商或 CDN 劫持。
-
-### Fingerprint / 公钥指纹
+当前发布包面向 `arm64-v8a` Android 设备：
 
 ```text
-7694 5E9F 3E9A 168F 8070 F195 805D 661C
-134D FAF6 8903 C199 463C 31E5 AE90 3AE0
+Freedom_<version>_fdroid_release_arm64-v8a.apk
 ```
 
----
+安装新版本时可直接覆盖旧版本，应用数据、订阅和节点配置会保留。建议只从本仓库 Release 页面下载，并在安装前核对版本和文件校验值。
 
-## Community / 社区
+## 开始使用
 
-Telegram Group / Telegram 群组：
+1. 安装 Freedom，并授予 VPN 和通知权限。
+2. 通过订阅链接、二维码、剪贴板或手动方式添加节点。
+3. 选择节点，在首页点击连接。
+4. 需要开机连接时，在高级设置中开启“开机时自动连接”，并进入“申请自启动权限”完成系统放行。
 
-[https://t.me/v2rayN](https://t.me/v2rayN)
+> Freedom 不提供代理节点或订阅服务。请仅使用你信任且有权使用的网络服务，并遵守所在地法律法规。
 
-Telegram Channel / Telegram 频道：
+## GeoIP 与 GeoSite
 
-[https://t.me/github_2dust](https://t.me/github_2dust)
+路由数据文件存放在应用的 assets 目录中，部分系统上的实际路径可能不同：
+
+```text
+Android/data/com.v2ray.ang.fdroid/files/assets
+```
+
+应用支持更新或导入兼容的 `geoip.dat` 与 `geosite.dat`。可参考：
+
+- [Loyalsoldier/v2ray-rules-dat](https://github.com/Loyalsoldier/v2ray-rules-dat)
+- [Loyalsoldier/geoip](https://github.com/Loyalsoldier/geoip)
+
+## 构建
+
+要求 JDK 17 和 Android SDK。Android 工程位于 `V2rayNG` 目录：
+
+```bash
+cd V2rayNG
+./gradlew assembleFdroidRelease -PABI_FILTERS=arm64-v8a
+```
+
+Windows 可使用 `gradlew.bat`。正式发布前还需要使用自己的签名证书对 APK 进行签名；仓库不包含发布私钥。
+
+## 隐私与安全
+
+- Freedom 不要求注册账号，也没有用于收集用户配置的开发者服务器。
+- 节点、订阅和设置保存在设备本地；只有用户主动更新订阅、测试连接或查询出口 IP 时才会发起相应网络请求。
+- 日志可能包含服务器地址等敏感信息，请检查后再主动分享。
+
+完整说明见 [Freedom 隐私政策](CR.md)。
+
+## 开源说明
+
+Freedom 以 [GPL-3.0](LICENSE) 许可证发布，并使用 [Xray-core](https://github.com/XTLS/Xray-core)、[v2fly/v2ray-core](https://github.com/v2fly/v2ray-core) 等开源生态组件。
+
+本代码库在演进过程中使用并改造了 [v2rayNG](https://github.com/2dust/v2rayNG) 的开源代码。感谢原项目及所有依赖项目的贡献者。Freedom 由本仓库独立维护，并非上述项目的官方发行版。
+
+## 反馈
+
+遇到问题时，请在 [Issues](https://github.com/qhs200312/Freedom/issues) 中提供 Freedom 版本、Android 版本、设备型号和可复现步骤。提交日志前请先移除订阅链接、服务器地址和其他敏感信息。

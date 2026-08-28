@@ -372,7 +372,7 @@ data class V2rayConfig(
             var balancerTag: String? = null,
             var port: String? = null,
             val sourcePort: String? = null,
-            val network: String? = null,
+            var network: String? = null,
             val source: List<String>? = null,
             val user: List<String>? = null,
             var inboundTag: List<String>? = null,

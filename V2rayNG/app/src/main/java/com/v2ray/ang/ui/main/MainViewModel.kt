@@ -262,7 +262,8 @@ class MainViewModel(
                 initialPageReady.await()
                 delay(32L)
                 dataSource.initAssets()
-                dataSource.syncSubscriptions()
+                dataSource.updateSubscriptionsOnLaunch()
+                setupGroupTab(forceRefresh = true).join()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

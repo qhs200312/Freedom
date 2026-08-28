@@ -68,5 +68,7 @@ interface MainDataSource : Closeable {
     fun getIPLocation(useProxy: Boolean): GeoLocation?
 
     fun syncSubscriptions()
+
+    fun updateSubscriptionsOnLaunch()
     fun initAssets()
 }

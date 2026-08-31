@@ -30,7 +30,7 @@ object Utils {
 
     private val IPV4_REGEX =
         Regex("^([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])$")
-    private val IPV6_REGEX = Regex("^((?:[0-9A-Fa-f]{1,4}))?((?::[0-9A-Fa-f]{1,4}))*::((?:[0-9A-Fa-f]{1,4}))?((?::[0-9A-Fa-f]{1,4}))*|((?:[0-9A-Fa-f]{1,4}))((?::[0-9A-Fa-f]{1,4})){7}$")
+    private val IPV6_LITERAL_REGEX = Regex("^[0-9A-Fa-f:.]+$")
 
     /**
      * Parse a string to an integer with a default value.
@@ -136,38 +136,31 @@ object Utils {
     fun isIpAddress(value: String?): Boolean {
         if (value.isNullOrEmpty()) return false
 
-        try {
-            var addr = value.trim()
-            if (addr.isEmpty()) return false
+        var address = value.trim()
+        if (address.isEmpty()) return false
 
-            //CIDR
-            if (addr.contains("/")) {
-                val arr = addr.split("/")
-                if (arr.size == 2 && arr[1].toIntOrNull() != null && arr[1].toInt() > -1) {
-                    addr = arr[0]
-                }
-            }
-
-            // Handle IPv4-mapped IPv6 addresses
-            if (addr.startsWith("::ffff:") && '.' in addr) {
-                addr = addr.drop(7)
-            } else if (addr.startsWith("[::ffff:") && '.' in addr) {
-                addr = addr.drop(8).replace("]", "")
-            }
-
-            val octets = addr.split('.')
-            if (octets.size == 4) {
-                if (octets[3].contains(":")) {
-                    addr = addr.substring(0, addr.indexOf(":"))
-                }
-                return isIpv4Address(addr)
-            }
-
-            return isIpv6Address(addr)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to validate IP address", e)
-            return false
+        if ('/' in address) {
+            val parts = address.split('/', limit = 3)
+            if (parts.size != 2) return false
+            val prefixLength = parts[1].toIntOrNull() ?: return false
+            val maxPrefixLength = if (':' in parts[0]) 128 else 32
+            if (prefixLength !in 0..maxPrefixLength) return false
+            address = parts[0]
         }
+
+        if (address.startsWith('[')) {
+            val closingBracket = address.indexOf(']')
+            if (closingBracket < 0) return false
+            val portSuffix = address.substring(closingBracket + 1)
+            if (portSuffix.isNotEmpty() && !isValidPortSuffix(portSuffix)) return false
+            address = address.substring(1, closingBracket)
+        } else if (address.count { it == ':' } == 1 && '.' in address) {
+            val portSeparator = address.lastIndexOf(':')
+            if (!isValidPortSuffix(address.substring(portSeparator))) return false
+            address = address.substring(0, portSeparator)
+        }
+
+        return parseIpLiteral(address) != null
     }
 
     /**
@@ -177,7 +170,7 @@ object Utils {
      * @return True if the string is a pure IP address, false otherwise.
      */
     fun isPureIpAddress(value: String): Boolean {
-        return isIpv4Address(value) || isIpv6Address(value)
+        return parseIpLiteral(value) != null
     }
 
     /**
@@ -212,11 +205,20 @@ object Utils {
      * @return True if the string is a valid IPv6 address, false otherwise.
      */
     private fun isIpv6Address(value: String): Boolean {
-        var addr = value
-        if (addr.startsWith("[") && addr.endsWith("]")) {
-            addr = addr.drop(1).dropLast(1)
+        return ':' in value && parseIpLiteral(value) != null
+    }
+
+    private fun isValidPortSuffix(value: String): Boolean {
+        if (!value.startsWith(':')) return false
+        return value.drop(1).toIntOrNull() in 0..65535
+    }
+
+    private fun parseIpLiteral(value: String): InetAddress? {
+        if (isIpv4Address(value)) {
+            return runCatching { InetAddress.getByName(value) }.getOrNull()
         }
-        return IPV6_REGEX.matches(addr)
+        if (':' !in value || !IPV6_LITERAL_REGEX.matches(value)) return null
+        return runCatching { InetAddress.getByName(value) }.getOrNull()
     }
 
     /**
@@ -460,49 +462,30 @@ object Utils {
      */
     fun isXray(): Boolean = BuildConfig.APPLICATION_ID.startsWith("com.v2ray.ang")
 
-    /**
-     * Converts an InetAddress to its long representation
-     *
-     * @param ip The InetAddress to convert
-     * @return The long representation of the IP address
-     */
-    private fun inetAddressToLong(ip: InetAddress): Long {
-        val bytes = ip.address
-        var result: Long = 0
-        for (i in bytes.indices) {
-            result = result shl 8 or (bytes[i].toInt() and 0xff).toLong()
-        }
-        return result
-    }
-
-    /**
-     * Check if an IP address is within a CIDR range
-     *
-     * @param ip The IP address to check
-     * @param cidr The CIDR notation range (e.g., "192.168.1.0/24")
-     * @return True if the IP is within the CIDR range, false otherwise
-     */
+    /** Check if an IP address is within an IPv4 or IPv6 CIDR range. */
     fun isIpInCidr(ip: String, cidr: String): Boolean {
-        try {
-            if (!isIpAddress(ip)) return false
+        val cidrParts = cidr.split('/', limit = 3)
+        if (cidrParts.size != 2) return false
 
-            // Parse CIDR (e.g., "192.168.1.0/24")
-            val (cidrIp, prefixLen) = cidr.split("/")
-            val prefixLength = prefixLen.toInt()
+        val address = parseIpLiteral(ip) ?: return false
+        val network = parseIpLiteral(cidrParts[0]) ?: return false
+        val addressBytes = address.address
+        val networkBytes = network.address
+        if (addressBytes.size != networkBytes.size) return false
 
-            // Convert IP and CIDR's IP portion to Long
-            val ipLong = inetAddressToLong(InetAddress.getByName(ip))
-            val cidrIpLong = inetAddressToLong(InetAddress.getByName(cidrIp))
+        val prefixLength = cidrParts[1].toIntOrNull() ?: return false
+        if (prefixLength !in 0..(addressBytes.size * 8)) return false
 
-            // Calculate subnet mask (e.g., /24 → 0xFFFFFF00)
-            val mask = if (prefixLength == 0) 0L else (-1L shl (32 - prefixLength))
-
-            // Check if they're in the same subnet
-            return (ipLong and mask) == (cidrIpLong and mask)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to check if IP is in CIDR", e)
-            return false
+        val completeBytes = prefixLength / 8
+        for (index in 0 until completeBytes) {
+            if (addressBytes[index] != networkBytes[index]) return false
         }
+
+        val remainingBits = prefixLength % 8
+        if (remainingBits == 0) return true
+        val mask = (0xff shl (8 - remainingBits)) and 0xff
+        return (addressBytes[completeBytes].toInt() and mask) ==
+            (networkBytes[completeBytes].toInt() and mask)
     }
 
     /**

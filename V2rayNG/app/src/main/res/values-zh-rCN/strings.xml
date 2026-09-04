@@ -166,6 +166,7 @@
     <string name="title_advanced">进阶设置</string>
     <string name="title_core_settings">核心设置</string>
     <string name="title_vpn_settings">VPN 设置</string>
+    <string name="title_location_privacy_settings">定位与隐私</string>
     <string name="title_pref_per_app_proxy">分应用</string>
     <string name="summary_pref_per_app_proxy">常规: 勾选的 App 被代理, 未勾选的直连;\n绕行模式: 勾选的 App 直连, 未勾选的被代理.\n不明白者在菜单中选择自动选中需代理应用</string>
     <string name="title_pref_is_booted">开机时自动连接</string>
@@ -173,6 +174,11 @@
     <string name="title_auto_start_permission">申请自启动权限</string>
     <string name="summary_auto_start_permission">打开系统自启动管理，允许 Freedom 在开机后运行</string>
     <string name="toast_auto_start_settings_unavailable">无法打开系统自启动设置</string>
+    <string name="title_oem_connection_guard">锁屏断流守护</string>
+    <string name="summary_oem_connection_guard">为 OPPO、vivo、小米及其子品牌保持核心活跃，亮屏后自动检测并恢复断流，可能略微增加耗电</string>
+    <string name="title_battery_background_settings">电池与后台运行设置</string>
+    <string name="summary_battery_background_settings">将 Freedom 设为不限制后台活动，减少系统锁屏冻结</string>
+    <string name="toast_battery_settings_unavailable">无法打开系统电池设置</string>
 
     <string name="subscription_updater_job_tips">任务将在后台运行，在通知中会显示进度信息</string>
     <string name="title_pref_auto_test_after_update_subscription">更新订阅后自动测试</string>
@@ -249,6 +255,12 @@
     <string name="summary_pref_update_subscription_on_start">打开软件时自动更新已启用的订阅。</string>
     <string name="title_pref_disable_non_proxied_udp">禁用非代理 UDP</string>
     <string name="summary_pref_disable_non_proxied_udp">阻止命中直连规则的 UDP 流量，同时保留通过代理的 UDP。</string>
+    <string name="title_pref_block_google_location_endpoints">阻止 Google 定位端点</string>
+    <string name="summary_pref_block_google_location_endpoints">仅阻止抓包中随 Google 定位请求出现的精确主机：mapsmobilesdks-pa.googleapis.com 和 www.googleapis.com。使用 www.googleapis.com 的其他 API 也可能受影响。</string>
+    <string name="title_pref_block_google_maps_services">阻止 Google 地图服务</string>
+    <string name="summary_pref_block_google_maps_services">通过 DNS 黑洞和路由阻断 Google 地图专用的地图、瓦片、街景、地点和路线主机；排除共享 Google 主机，尽量不影响搜索、Gemini 和推送。</string>
+    <string name="title_pref_auto_disable_location_with_proxy">代理运行时自动关闭定位</string>
+    <string name="summary_pref_auto_disable_location_with_proxy">需要 Root。代理启动后记录并关闭系统定位；代理停止时仅恢复由 Freedom 改变的原状态，不会把原本关闭的定位误打开。</string>
      <string name="summary_pref_socks_port">本地代理端口</string>
      <string name="title_pref_dynamic_socks_port">启用动态本地代理端口</string>
      <string name="summary_pref_dynamic_socks_port">每次生成 inbound 时随机生成一个本地代理端口</string>

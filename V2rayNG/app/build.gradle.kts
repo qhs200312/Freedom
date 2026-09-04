@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.jaredsburrows.license")
+}
+
+val freedomSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("../signing.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -13,8 +22,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 24
         targetSdk = 37
-        versionCode = 754
-        versionName = "2.3.14"
+        versionCode = 755
+        versionName = "2.4.0"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -38,9 +47,21 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (freedomSigningProperties.isNotEmpty()) {
+            create("freedomRelease") {
+                storeFile = rootProject.file("../${freedomSigningProperties.getProperty("storeFile")}")
+                storePassword = freedomSigningProperties.getProperty("storePassword")
+                keyAlias = freedomSigningProperties.getProperty("keyAlias")
+                keyPassword = freedomSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfigs.findByName("freedomRelease")?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

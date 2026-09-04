@@ -47,8 +47,8 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      * Destroys the service.
      */
     override fun onDestroy() {
+        CoreServiceManager.stopCoreLoop(this)
         super.onDestroy()
-        CoreServiceManager.stopCoreLoop()
     }
 
     /**

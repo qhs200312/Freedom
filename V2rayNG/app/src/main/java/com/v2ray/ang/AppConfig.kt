@@ -67,6 +67,12 @@ object AppConfig {
     const val PREF_SOCKS_PASSWORD = "pref_socks_password"
     const val PREF_SOCKS_ENABLE_UDP = "pref_socks_enable_udp"
     const val PREF_DISABLE_NON_PROXIED_UDP = "pref_disable_non_proxied_udp"
+    const val PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS = "pref_block_google_location_endpoints"
+    const val PREF_BLOCK_GOOGLE_MAPS_SERVICES = "pref_block_google_maps_services"
+    const val PREF_AUTO_DISABLE_LOCATION_WITH_PROXY = "pref_auto_disable_location_with_proxy"
+    const val PREF_LOCATION_DISABLED_BY_FREEDOM = "pref_location_disabled_by_freedom"
+    const val PREF_LOCATION_MODE_BEFORE_PROXY = "pref_location_mode_before_proxy"
+    const val PREF_OEM_CONNECTION_GUARD = "pref_oem_connection_guard"
     const val PREF_REMOTE_DNS = "pref_remote_dns"
     const val PREF_DOMESTIC_DNS = "pref_domestic_dns"
     const val PREF_DNS_HOSTS = "pref_dns_hosts"
@@ -250,6 +256,57 @@ object AppConfig {
 
     // Google API rule constants
     const val GOOGLEAPIS_CN_DOMAIN = "domain:googleapis.cn"
+    val GOOGLE_LOCATION_ENDPOINT_DOMAINS = listOf(
+        "full:mapsmobilesdks-pa.googleapis.com",
+        "full:www.googleapis.com",
+    )
+    val GOOGLE_MAPS_SERVICE_DOMAINS = listOf(
+        "full:maps.googleapis.com",
+        "full:mapsresources-pa.googleapis.com",
+        "full:maps.gstatic.com",
+        "full:mapsmobilesdks-pa.googleapis.com",
+        "full:keyhole-pa.googleapis.com",
+        "full:streetviewpixels-pa.googleapis.com",
+        "full:places.googleapis.com",
+        "full:roads.googleapis.com",
+        "full:routes.googleapis.com",
+        "full:routeoptimization.googleapis.com",
+        "full:tile.googleapis.com",
+        "full:mapsplatformdatasets.googleapis.com",
+        "full:maps.l.google.com",
+        "full:mt.l.google.com",
+        "full:khm.l.google.com",
+        "full:khm.google.com",
+        "full:khm.googleapis.com",
+        "full:khm0.google.com",
+        "full:khm0.googleapis.com",
+        "full:khm1.google.com",
+        "full:khm1.googleapis.com",
+        "full:khms0.google.com",
+        "full:khms0.googleapis.com",
+        "full:khms1.google.com",
+        "full:khms1.googleapis.com",
+        "full:khms2.google.com",
+        "full:khms2.googleapis.com",
+        "full:khms3.google.com",
+        "full:khms3.googleapis.com",
+        "full:khmdb0.google.com",
+        "full:khmdb0.googleapis.com",
+        "full:khmdb1.google.com",
+        "full:khmdb1.googleapis.com",
+        "full:geo0.ggpht.com",
+        "full:geo1.ggpht.com",
+        "full:geo2.ggpht.com",
+        "full:geo3.ggpht.com",
+        "full:cbks0.google.com",
+        "full:cbks0.googleapis.com",
+        "full:cbks1.google.com",
+        "full:cbks1.googleapis.com",
+        "full:cbks2.google.com",
+        "full:cbks2.googleapis.com",
+        "full:cbks3.google.com",
+        "full:cbks3.googleapis.com",
+    )
     const val GOOGLEAPIS_COM_DOMAIN = "googleapis.com"
 
     // Android Private DNS constants

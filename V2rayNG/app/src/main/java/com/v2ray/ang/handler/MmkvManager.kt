@@ -632,6 +632,9 @@ object MmkvManager {
         return settingsStorage.encode(key, value)
     }
 
+    /** Returns whether a settings key has an explicitly stored value. */
+    fun containsSettingsKey(key: String): Boolean = settingsStorage.containsKey(key)
+
     /**
      * Decodes the settings string.
      *

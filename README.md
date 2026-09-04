@@ -30,6 +30,7 @@ Freedom 是一款独立维护的 Android 网络代理与连接管理工具。它
 ## 下载
 
 从 [GitHub Releases](https://github.com/qhs200312/Freedom/releases/latest) 获取最新正式版。
+版本变化可查看 [更新日志](CHANGELOG.md)。
 
 当前发布包面向 `arm64-v8a` Android 设备：
 

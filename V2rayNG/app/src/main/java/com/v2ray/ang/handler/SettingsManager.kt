@@ -516,6 +516,10 @@ object SettingsManager {
         return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true)
     }
 
+    fun isOemConnectionGuardEnabled(): Boolean {
+        return MmkvManager.decodeSettingsBool(AppConfig.PREF_OEM_CONNECTION_GUARD, true)
+    }
+
     /**
      * Check if VPN mode is enabled.
      * @return True if VPN mode is enabled, false otherwise.
@@ -581,6 +585,9 @@ object SettingsManager {
         ensureDefaultValue(AppConfig.PREF_SOCKS_PORT, AppConfig.PORT_SOCKS)
         ensureDefaultValue(AppConfig.PREF_REMOTE_DNS, AppConfig.DNS_PROXY)
         ensureDefaultValue(AppConfig.PREF_DOMESTIC_DNS, AppConfig.DNS_DIRECT)
+        ensureDefaultValue(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)
+        ensureDefaultValue(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)
+        ensureDefaultValue(AppConfig.PREF_OEM_CONNECTION_GUARD, true)
         ensureDefaultDelayTestUrl()
         ensureDefaultValue(AppConfig.PREF_IP_API_URL, AppConfig.IP_API_URL)
         ensureDefaultValue(AppConfig.PREF_HEV_TUNNEL_RW_TIMEOUT, AppConfig.HEVTUN_RW_TIMEOUT)
@@ -598,6 +605,12 @@ object SettingsManager {
 
     private fun ensureDefaultValue(key: String, default: String) {
         if (MmkvManager.decodeSettingsString(key).isNullOrEmpty()) {
+            MmkvManager.encodeSettings(key, default)
+        }
+    }
+
+    private fun ensureDefaultValue(key: String, default: Boolean) {
+        if (!MmkvManager.containsSettingsKey(key)) {
             MmkvManager.encodeSettings(key, default)
         }
     }

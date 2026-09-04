@@ -3,10 +3,55 @@ package com.v2ray.ang
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.dto.V2rayConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoreConfigManagerTest {
+    @Test
+    fun googleLocationBlockRuleUsesOnlyCapturedHosts() {
+        val rule = CoreConfigManager.googleLocationBlockRule(enabled = true)
+
+        assertEquals(AppConfig.TAG_BLOCKED, rule?.outboundTag)
+        assertEquals("443", rule?.port)
+        assertEquals("tcp,udp", rule?.network)
+        assertEquals(
+            listOf(
+                "full:mapsmobilesdks-pa.googleapis.com",
+                "full:www.googleapis.com",
+            ),
+            rule?.domain,
+        )
+        assertTrue(rule?.domain.orEmpty().none { it.contains("robinfrontend") })
+        assertTrue(rule?.domain.orEmpty().none { it.contains("clients4.google.com") })
+    }
+
+    @Test
+    fun googleLocationBlockRuleIsAbsentWhenDisabled() {
+        assertNull(CoreConfigManager.googleLocationBlockRule(enabled = false))
+    }
+
+    @Test
+    fun googleMapsBlockRuleUsesOnlyMapSpecificHosts() {
+        val rule = CoreConfigManager.googleMapsBlockRule(enabled = true)
+
+        assertEquals(AppConfig.TAG_BLOCKED, rule?.outboundTag)
+        assertEquals("443", rule?.port)
+        assertTrue(rule?.domain.orEmpty().contains("full:maps.googleapis.com"))
+        assertTrue(rule?.domain.orEmpty().contains("full:mapsmobilesdks-pa.googleapis.com"))
+        assertTrue(rule?.domain.orEmpty().contains("full:tile.googleapis.com"))
+        assertTrue(rule?.domain.orEmpty().contains("full:places.googleapis.com"))
+        assertTrue(rule?.domain.orEmpty().none { it == "full:www.google.com" })
+        assertTrue(rule?.domain.orEmpty().none { it == "full:clients4.google.com" })
+        assertTrue(rule?.domain.orEmpty().none { it == "full:csi.gstatic.com" })
+    }
+
+    @Test
+    fun googleMapsBlockRuleIsAbsentWhenDisabled() {
+        assertNull(CoreConfigManager.googleMapsBlockRule(enabled = false))
+    }
+
     @Test
     fun directRuleSplitsUdpToBlockAndKeepsTcpDirect() {
         val rule = routingRule(outboundTag = AppConfig.TAG_DIRECT, network = "tcp,udp")

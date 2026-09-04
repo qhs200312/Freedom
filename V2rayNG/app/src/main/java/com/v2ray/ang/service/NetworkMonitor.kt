@@ -32,6 +32,7 @@ class NetworkMonitor(
         const val HANDOVER_DEBOUNCE_MS = 1000L
     }
 
+    @Volatile
     private var upstream: Network? = null
     private var hasObservedNetwork = false
     private var handoverJob: Job? = null
@@ -110,6 +111,8 @@ class NetworkMonitor(
             LogUtil.w(AppConfig.TAG, "NetworkMonitor: Failed to unregister callback", e)
         }
     }
+
+    fun hasAvailableNetwork(): Boolean = upstream != null
 
     private fun scheduleHandover(network: Network) {
         LogUtil.i(AppConfig.TAG, "NetworkMonitor: Upstream is now $network")

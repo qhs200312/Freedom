@@ -162,8 +162,14 @@
     <!-- Preferences -->
     <string name="title_settings">設定</string>
     <string name="title_advanced">進階</string>
+    <string name="title_oem_connection_guard">鎖屏斷流守護</string>
+    <string name="summary_oem_connection_guard">為 OPPO、vivo、小米及其子品牌保持核心活躍，亮屏後自動檢測並恢復斷流，可能略微增加耗電</string>
+    <string name="title_battery_background_settings">電池與背景執行設定</string>
+    <string name="summary_battery_background_settings">將 Freedom 設為不限制背景活動，減少系統鎖屏凍結</string>
+    <string name="toast_battery_settings_unavailable">無法開啟系統電池設定</string>
     <string name="title_core_settings">核心設定</string>
     <string name="title_vpn_settings">VPN 設定</string>
+    <string name="title_location_privacy_settings">定位與隱私</string>
     <string name="title_pref_per_app_proxy">Proxy 個別應用程式</string>
     <string name="summary_pref_per_app_proxy">常規：勾選的 App 啟用 Proxy，未勾選的直接連線；\n繞行模式：勾選的 App 直接連線，未勾選的啟用 Proxy。\n可在選單中選擇自動選中需 Proxy 應用</string>
     <string name="title_pref_is_booted">開機時自動連線</string>
@@ -236,6 +242,12 @@
     <string name="toast_warning_pref_proxysharing_short">允許來自區域網路的連線，請確保處於受信網路</string>
 
     <string name="title_pref_socks_port">本地代理埠</string>
+    <string name="title_pref_block_google_location_endpoints">阻止 Google 定位端點</string>
+    <string name="summary_pref_block_google_location_endpoints">僅阻止封包擷取中隨 Google 定位請求出現的精確主機：mapsmobilesdks-pa.googleapis.com 與 www.googleapis.com。使用 www.googleapis.com 的其他 API 也可能受影響。</string>
+    <string name="title_pref_block_google_maps_services">阻止 Google 地圖服務</string>
+    <string name="summary_pref_block_google_maps_services">透過 DNS 黑洞與路由阻斷 Google 地圖專用的地圖、圖磚、街景、地點及路線主機；排除共用 Google 主機，盡量不影響搜尋、Gemini 與推播。</string>
+    <string name="title_pref_auto_disable_location_with_proxy">代理執行時自動關閉定位</string>
+    <string name="summary_pref_auto_disable_location_with_proxy">需要 Root。代理啟動後記錄並關閉系統定位；代理停止時只恢復由 Freedom 改變的原始狀態，不會誤開原本已關閉的定位。</string>
     <string name="title_pref_enable_local_proxy">啟用本地代理</string>
     <string name="summary_pref_enable_local_proxy">未開啟時沒有 socks 代理，無法透過代理更新訂閱等</string>
     <string name="title_pref_socks_enable_udp">SOCKS5 UDP</string>

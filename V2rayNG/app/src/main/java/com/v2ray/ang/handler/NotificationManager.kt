@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreServiceManager
@@ -126,18 +127,29 @@ object NotificationManager {
      * Cancels the notification.
      */
     @Synchronized
-    fun cancelNotification() {
-        val service = getService() ?: return
-        val notificationManager = getNotificationManager()
-
+    fun cancelNotification(service: Service? = getService()) {
         // Stop updates before removing the foreground notification. TrafficStatsManager emits
         // one final zero-speed snapshot during shutdown; without serialization that collector
         // can repost the notification immediately after stopForeground removes it.
         speedNotificationJob?.cancel()
         speedNotificationJob = null
         mBuilder = null
-        service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
-        notificationManager?.cancel(NOTIFICATION_ID)
+
+        try {
+            service?.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+        } catch (e: Exception) {
+            LogUtil.w(AppConfig.TAG, "Notification: failed to leave foreground state: ${e.message}")
+        }
+
+        // The service reference is soft and can disappear during teardown. NotificationManager
+        // only needs an application context, so always issue a direct cancel as a final cleanup.
+        try {
+            val context = service?.applicationContext ?: AngApplication.application
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(NOTIFICATION_ID)
+        } catch (e: Exception) {
+            LogUtil.w(AppConfig.TAG, "Notification: failed to cancel foreground notification: ${e.message}")
+        }
 
         mNotificationManager = null
     }

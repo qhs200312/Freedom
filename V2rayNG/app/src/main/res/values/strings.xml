@@ -169,6 +169,7 @@
     <string name="title_advanced">Advanced Settings</string>
     <string name="title_core_settings">Core Settings</string>
     <string name="title_vpn_settings">VPN Settings</string>
+    <string name="title_location_privacy_settings">Location &amp; privacy</string>
     <string name="title_pref_per_app_proxy">Per-app proxy</string>
     <string name="summary_pref_per_app_proxy">General: Checked apps use proxy, unchecked apps connect directly; \nBypass mode: checked apps connect directly, unchecked apps use proxy. \nThe option to automatically select proxy applications is in the menu</string>
     <string name="title_pref_is_booted">Auto connect at startup</string>
@@ -176,6 +177,11 @@
     <string name="title_auto_start_permission">Autostart permission</string>
     <string name="summary_auto_start_permission">Open system autostart settings so Freedom can run after reboot</string>
     <string name="toast_auto_start_settings_unavailable">Unable to open system autostart settings</string>
+    <string name="title_oem_connection_guard">Lock-screen connection guard</string>
+    <string name="summary_oem_connection_guard">Keeps the core responsive on OPPO, vivo, Xiaomi and their sub-brands, then checks and recovers the connection when the screen wakes; may use slightly more power</string>
+    <string name="title_battery_background_settings">Battery and background settings</string>
+    <string name="summary_battery_background_settings">Allow unrestricted background activity for Freedom to reduce lock-screen freezing</string>
+    <string name="toast_battery_settings_unavailable">Unable to open system battery settings</string>
 
 
     <string name="subscription_updater_job_tips">The task will run in the background, and progress information will be displayed in the notification.</string>
@@ -256,6 +262,12 @@
     <string name="summary_pref_update_subscription_on_start">Automatically update enabled subscriptions when the app opens.</string>
     <string name="title_pref_disable_non_proxied_udp">Disable non-proxied UDP</string>
     <string name="summary_pref_disable_non_proxied_udp">Block UDP traffic matched by direct routing rules while keeping proxied UDP available.</string>
+    <string name="title_pref_block_google_location_endpoints">Block Google location endpoints</string>
+    <string name="summary_pref_block_google_location_endpoints">Block only the exact hosts observed during Google location requests: mapsmobilesdks-pa.googleapis.com and www.googleapis.com. Other APIs using www.googleapis.com may also be affected.</string>
+    <string name="title_pref_block_google_maps_services">Block Google Maps services</string>
+    <string name="summary_pref_block_google_maps_services">DNS-blackhole and block Google Maps-specific map, tile, Street View, Places and route hosts. Shared Google hosts are excluded to reduce impact on Search, Gemini and push notifications.</string>
+    <string name="title_pref_auto_disable_location_with_proxy">Disable location while proxy is active</string>
+    <string name="summary_pref_auto_disable_location_with_proxy">Root required. Freedom records the current location state, turns location off after the proxy starts, and restores only the state it changed when the proxy stops.</string>
     <string name="summary_pref_socks_port">Local proxy port</string>
     <string name="title_pref_dynamic_socks_port">Enable dynamic local proxy port</string>
     <string name="summary_pref_dynamic_socks_port">Generate a random local proxy port each time the inbound is created</string>

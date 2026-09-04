@@ -244,13 +244,13 @@ internal fun MainBottomNavigation(
                 val indicatorBackground = Brush.verticalGradient(
                     colors = if (darkTheme) {
                         listOf(
-                            Color.White.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.14f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.10f),
                         )
                     } else {
                         listOf(
-                            Color.White.copy(alpha = 0.96f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                            Color.White.copy(alpha = 0.48f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
                         )
                     },
                 )
@@ -463,13 +463,13 @@ internal fun MainBottomNavigation(
                                 Brush.verticalGradient(
                                     if (darkTheme) {
                                         listOf(
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f),
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
                                         )
                                     } else {
                                         listOf(
-                                            Color.White.copy(alpha = 0.98f),
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                                            Color.White.copy(alpha = 0.54f),
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                                         )
                                     },
                                 ),

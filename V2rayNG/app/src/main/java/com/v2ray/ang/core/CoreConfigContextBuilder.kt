@@ -226,8 +226,25 @@ object CoreConfigContextBuilder {
      * outbounds are normalized into three tags only: proxy / direct / block.
      */
     private fun collectRoutingDomainRulesForDns(): List<CoreConfigContext.RoutingDomainRule> {
-        val rulesetItems = MmkvManager.decodeRoutingRulesets() ?: return emptyList()
+        val rulesetItems = MmkvManager.decodeRoutingRulesets().orEmpty()
         val result = mutableListOf<CoreConfigContext.RoutingDomainRule>()
+
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)) {
+            result.add(
+                CoreConfigContext.RoutingDomainRule(
+                    domain = AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS,
+                    outboundTag = AppConfig.TAG_BLOCKED,
+                )
+            )
+        }
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)) {
+            result.add(
+                CoreConfigContext.RoutingDomainRule(
+                    domain = AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS,
+                    outboundTag = AppConfig.TAG_BLOCKED,
+                )
+            )
+        }
 
         rulesetItems
             .asSequence()

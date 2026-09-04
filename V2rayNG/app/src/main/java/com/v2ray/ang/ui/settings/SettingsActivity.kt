@@ -61,6 +61,7 @@ class SettingsActivity : BaseComponentActivity() {
             onBackClick = { finish() },
             onModeHelpClicked = { Utils.openUri(this, AppConfig.APP_WIKI_MODE) },
             onAutoStartPermissionClicked = ::openAutoStartSettings,
+            onBatterySettingsClicked = ::openBatterySettings,
         )
     }
 
@@ -74,6 +75,30 @@ class SettingsActivity : BaseComponentActivity() {
                 component = ComponentName(
                     "com.miui.securitycenter",
                     "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                )
+            },
+            Intent().apply {
+                component = ComponentName(
+                    "com.oplus.safecenter",
+                    "com.oplus.safecenter.permission.startup.StartupAppListActivity",
+                )
+            },
+            Intent().apply {
+                component = ComponentName(
+                    "com.coloros.safecenter",
+                    "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+                )
+            },
+            Intent().apply {
+                component = ComponentName(
+                    "com.vivo.permissionmanager",
+                    "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+                )
+            },
+            Intent().apply {
+                component = ComponentName(
+                    "com.iqoo.secure",
+                    "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager",
                 )
             },
             Intent(
@@ -97,6 +122,29 @@ class SettingsActivity : BaseComponentActivity() {
 
         Toast.makeText(this, R.string.toast_auto_start_settings_unavailable, Toast.LENGTH_SHORT).show()
     }
+
+    private fun openBatterySettings() {
+        val intents = listOf(
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"),
+            ),
+        )
+        intents.forEach { intent ->
+            try {
+                if (intent.resolveActivity(packageManager) != null) {
+                    startActivity(intent)
+                    return
+                }
+            } catch (_: ActivityNotFoundException) {
+                // Try the next system settings entry point.
+            } catch (_: SecurityException) {
+                // Some vendor settings activities are present but not exported.
+            }
+        }
+        Toast.makeText(this, R.string.toast_battery_settings_unavailable, Toast.LENGTH_SHORT).show()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -106,11 +154,13 @@ fun SettingsScreen(
     onBackClick: () -> Unit,
     onModeHelpClicked: () -> Unit,
     onAutoStartPermissionClicked: () -> Unit,
+    onBatterySettingsClicked: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     var uiSettingsExpanded by rememberSaveable { mutableStateOf(true) }
     var vpnSettingsExpanded by rememberSaveable { mutableStateOf(true) }
+    var locationPrivacySettingsExpanded by rememberSaveable { mutableStateOf(true) }
     var coreSettingsExpanded by rememberSaveable { mutableStateOf(true) }
     var muxSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var fragmentSettingsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -166,6 +216,18 @@ fun SettingsScreen(
 
     var ipv6Enabled by rememberMmkvBool(AppConfig.PREF_IPV6_ENABLED, false)
     var preferIpv6 by rememberMmkvBool(AppConfig.PREF_PREFER_IPV6, false)
+    var blockGoogleLocationEndpoints by rememberMmkvBool(
+        AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS,
+        true,
+    )
+    var blockGoogleMapsServices by rememberMmkvBool(
+        AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES,
+        true,
+    )
+    var autoDisableLocationWithProxy by rememberMmkvBool(
+        AppConfig.PREF_AUTO_DISABLE_LOCATION_WITH_PROXY,
+        false,
+    )
     var sniffingEnabled by rememberMmkvBool(AppConfig.PREF_SNIFFING_ENABLED, true)
     var routeOnlyEnabled by rememberMmkvBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false)
     var remoteDns by rememberMmkvString(AppConfig.PREF_REMOTE_DNS, "")
@@ -175,6 +237,7 @@ fun SettingsScreen(
     var outboundResolveMethod by rememberMmkvString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "0")
 
     var isBooted by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
+    var oemConnectionGuard by rememberMmkvBool(AppConfig.PREF_OEM_CONNECTION_GUARD, true)
     var delayTestUrl by rememberMmkvString(
         AppConfig.PREF_DELAY_TEST_URL,
         AppConfig.DELAY_TEST_URL,
@@ -374,6 +437,32 @@ fun SettingsScreen(
                     enabled = hevTunEnabled,
                     keyboardNumber = true,
                     onValueChanged = { hevTunRwTimeout = it }
+                )
+            }
+
+            CollapsiblePreferenceGroupHeader(
+                title = stringResource(R.string.title_location_privacy_settings),
+                expanded = locationPrivacySettingsExpanded,
+                onExpandedChange = { locationPrivacySettingsExpanded = it }
+            )
+            if (locationPrivacySettingsExpanded) {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_block_google_location_endpoints),
+                    summary = stringResource(R.string.summary_pref_block_google_location_endpoints),
+                    checked = blockGoogleLocationEndpoints,
+                    onCheckedChange = { blockGoogleLocationEndpoints = it },
+                )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_block_google_maps_services),
+                    summary = stringResource(R.string.summary_pref_block_google_maps_services),
+                    checked = blockGoogleMapsServices,
+                    onCheckedChange = { blockGoogleMapsServices = it },
+                )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_auto_disable_location_with_proxy),
+                    summary = stringResource(R.string.summary_pref_auto_disable_location_with_proxy),
+                    checked = autoDisableLocationWithProxy,
+                    onCheckedChange = { autoDisableLocationWithProxy = it },
                 )
             }
 
@@ -612,10 +701,21 @@ fun SettingsScreen(
                     checked = isBooted,
                     onCheckedChange = { isBooted = it }
                 )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_oem_connection_guard),
+                    summary = stringResource(R.string.summary_oem_connection_guard),
+                    checked = oemConnectionGuard,
+                    onCheckedChange = { oemConnectionGuard = it },
+                )
                 SettingsMenuItem(
                     title = stringResource(R.string.title_auto_start_permission),
                     subtitle = stringResource(R.string.summary_auto_start_permission),
                     onClick = onAutoStartPermissionClicked,
+                )
+                SettingsMenuItem(
+                    title = stringResource(R.string.title_battery_background_settings),
+                    subtitle = stringResource(R.string.summary_battery_background_settings),
+                    onClick = onBatterySettingsClicked,
                 )
                 SettingsEditItem(
                     title = stringResource(R.string.title_pref_delay_test_url),

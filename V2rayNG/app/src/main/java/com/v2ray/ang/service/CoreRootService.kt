@@ -119,7 +119,6 @@ class CoreRootService : Service(), ServiceControl {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         // Wait for any in-flight async setup to finish before tearing down. The rules are
         // installed off the main thread and can take seconds (the setup script waits for the
         // tun to appear); if a stop arrives during that window, teardown would run first and
@@ -129,13 +128,14 @@ class CoreRootService : Service(), ServiceControl {
         // Remove routing rules BEFORE stopping the core so traffic is never redirected
         // to a dead listener. Synchronous on purpose — leaving rules behind breaks the net.
         RootProxyManager.stop(this)
-        CoreServiceManager.stopCoreLoop()
+        CoreServiceManager.stopCoreLoop(this)
+        super.onDestroy()
     }
 
     /** Avoid waiting for the currently executing setup job from onDestroy(). */
     private fun stopAfterBackgroundFailure() {
         RootProxyManager.stop(this)
-        CoreServiceManager.stopCoreLoop()
+        CoreServiceManager.stopCoreLoop(this)
         setupJob = null
         stopSelf()
     }

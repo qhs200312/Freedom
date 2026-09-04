@@ -23,10 +23,12 @@ import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
 import com.v2ray.ang.handler.TrafficStatsManager
+import com.v2ray.ang.root.LocationPrivacyManager
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.service.DialerNativeService
 import com.v2ray.ang.service.DialerWebviewService
 import com.v2ray.ang.service.NetworkMonitor
+import com.v2ray.ang.service.OemConnectionGuard
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +40,7 @@ import libv2ray.CoreController
 import libv2ray.ProcessFinder
 import java.lang.ref.SoftReference
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicBoolean
 
 object CoreServiceManager {
 
@@ -47,9 +50,9 @@ object CoreServiceManager {
     private var processFinder: XrayProcessFinder? = null
     private var browserDialer: IDialerService? = null
     private var networkMonitor: NetworkMonitor? = null
+    private var connectionGuard: OemConnectionGuard? = null
 
-    @Volatile
-    private var isReloading = false
+    private val isReloading = AtomicBoolean(false)
 
     /** Tun descriptor the core was started with, null in the proxy only and root run modes. */
     private var currentVpnInterface: ParcelFileDescriptor? = null
@@ -128,6 +131,7 @@ object CoreServiceManager {
 
         try {
             doStartCoreLoop(service, vpnInterface, notifyStartSuccess)
+            LocationPrivacyManager.onProxyStarted(service)
             return true
         } catch (e: Exception) {
             val message = e.message?.takeUnless { it.isBlank() } ?: e.javaClass.simpleName
@@ -153,6 +157,7 @@ object CoreServiceManager {
         currentVpnInterface = vpnInterface
         launchCore(service, vpnInterface, notifyStartSuccess = notifyStartSuccess)
         startNetworkMonitor(service)
+        startConnectionGuard(service)
     }
 
     @Throws(Exception::class)
@@ -225,11 +230,13 @@ object CoreServiceManager {
      * Unregisters broadcast receivers, stops notifications, and shuts down plugins.
      * @return True if the core was stopped successfully, false otherwise.
      */
-    fun stopCoreLoop(): Boolean {
-        val service = getService() ?: return false
+    fun stopCoreLoop(serviceOverride: Service? = null): Boolean {
+        val service = serviceOverride ?: getService()
 
         networkMonitor?.unregister()
         networkMonitor = null
+        connectionGuard?.stop()
+        connectionGuard = null
         currentVpnInterface = null
         TrafficStatsManager.stop()
 
@@ -250,16 +257,22 @@ object CoreServiceManager {
             browserDialer = null
         }
 
-        MessageHelper.sendMsg2UI(service, AppConfig.MSG_STATE_STOP_SUCCESS, "")
-        NotificationManager.cancelNotification()
+        service?.let {
+            MessageHelper.sendMsg2UI(it, AppConfig.MSG_STATE_STOP_SUCCESS, "")
+        }
+        NotificationManager.cancelNotification(service)
 
-        try {
-            service.unregisterReceiver(mMsgReceive)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
+        if (service != null) {
+            try {
+                service.unregisterReceiver(mMsgReceive)
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
+            }
+
+            LocationPrivacyManager.onProxyStopped(service)
         }
 
-        return true
+        return service != null
     }
 
     /**
@@ -279,6 +292,18 @@ object CoreServiceManager {
         ).also { it.register() }
     }
 
+    private fun startConnectionGuard(service: Service) {
+        if (!SettingsManager.isOemConnectionGuardEnabled() || connectionGuard != null) return
+
+        connectionGuard = OemConnectionGuard(
+            context = service,
+            isCoreRunning = ::isRunning,
+            hasUsableNetwork = { networkMonitor?.hasAvailableNetwork() ?: true },
+            isCoreReachable = ::isCoreReachable,
+            reloadCore = ::reloadCore,
+        ).also { it.start() }
+    }
+
     /**
      * Restarts the core in place after the upstream network changed: the service, the notification
      * and the VPN interface all stay up, so nothing of this is visible.
@@ -289,14 +314,13 @@ object CoreServiceManager {
      * @return True if the core is running again.
      */
     private fun reloadCore(): Boolean {
-        if (isReloading) return false
         val service = getService() ?: return false
         if (!isRunning()) return false
+        if (!isReloading.compareAndSet(false, true)) return false
 
         return try {
             val tunFd = currentVpnInterface
 
-            isReloading = true
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Core reload start...")
 
             TrafficStatsManager.stop()
@@ -338,7 +362,7 @@ object CoreServiceManager {
             serviceControl?.get()?.stopService()
             false
         } finally {
-            isReloading = false
+            isReloading.set(false)
         }
     }
 
@@ -554,13 +578,17 @@ object CoreServiceManager {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     LogUtil.i(AppConfig.TAG, "StartCore-Manager: Screen off")
+                    connectionGuard?.onScreenOff()
                     NotificationManager.stopSpeedNotification()
                 }
 
                 Intent.ACTION_SCREEN_ON -> {
                     LogUtil.i(AppConfig.TAG, "StartCore-Manager: Screen on")
+                    connectionGuard?.onScreenOn()
                     NotificationManager.startSpeedNotification()
                 }
+
+                Intent.ACTION_USER_PRESENT -> connectionGuard?.onScreenOn()
             }
         }
     }

@@ -1127,10 +1127,37 @@ object CoreConfigManager {
             MmkvManager.decodeSettingsString(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY)
                 ?: "AsIs"
 
+        googleLocationBlockRule(
+            MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)
+        )?.let(v2rayConfig.routing.rules::add)
+        googleMapsBlockRule(
+            MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)
+        )?.let(v2rayConfig.routing.rules::add)
+
         val rulesetItems = MmkvManager.decodeRoutingRulesets()
         rulesetItems?.forEach { key ->
             appendRoutingUserRule(configContext, key, v2rayConfig, policyGroupBalancerTags)
         }
+    }
+
+    internal fun googleLocationBlockRule(enabled: Boolean): V2rayConfig.RoutingBean.RulesBean? {
+        if (!enabled) return null
+        return V2rayConfig.RoutingBean.RulesBean(
+            domain = AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS,
+            outboundTag = AppConfig.TAG_BLOCKED,
+            port = "443",
+            network = "tcp,udp",
+        )
+    }
+
+    internal fun googleMapsBlockRule(enabled: Boolean): V2rayConfig.RoutingBean.RulesBean? {
+        if (!enabled) return null
+        return V2rayConfig.RoutingBean.RulesBean(
+            domain = AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS,
+            outboundTag = AppConfig.TAG_BLOCKED,
+            port = "443",
+            network = "tcp,udp",
+        )
     }
 
     /**

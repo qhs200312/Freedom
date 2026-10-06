@@ -22,6 +22,7 @@ import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.UpdateCheckerManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
+import com.v2ray.ang.util.RuntimeDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -52,6 +53,7 @@ class MainViewModel(
 
     private val disconnectedText: String = dataSource.getString(R.string.connection_not_connected)
     private val connectedText: String = dataSource.getString(R.string.connection_connected)
+    private val connectingText: String = dataSource.getString(R.string.connection_connecting)
     private val initialSelectedGuid = dataSource.getSelectServer()
     private val initialSelectedProfile = initialSelectedGuid?.let(dataSource::decodeServerConfig)
 
@@ -93,6 +95,14 @@ class MainViewModel(
     private var locationJob: Job? = null
     @Volatile
     private var locationRequestId = 0L
+    @Volatile private var dashboardVisible = false
+
+    fun setDashboardVisible(visible: Boolean) {
+        dashboardVisible = visible
+        if (visible && _uiState.value.isRunning && _uiState.value.exitIpFailed) {
+            refreshIPLocation(useProxy = true)
+        }
+    }
 
     @Volatile
     private var testingGroupId: String? = null
@@ -148,7 +158,9 @@ class MainViewModel(
     private fun handleServiceEvent(event: MainServiceEvent) {
         when (event) {
             MainServiceEvent.StateRunning -> updateRunningState(true, clearTestingText = false)
-            MainServiceEvent.StateNotRunning -> updateRunningState(false, clearTestingText = false)
+            MainServiceEvent.StateNotRunning -> {
+                if (!_uiState.value.isStarting) updateRunningState(false, clearTestingText = false)
+            }
             MainServiceEvent.StateStartSuccess -> {
                 toastSuccess(R.string.toast_services_success)
                 updateRunningState(true)
@@ -278,6 +290,19 @@ class MainViewModel(
                 proxyMode = SettingsManager.getProxyMode(),
                 confirmRemove = dataSource.getConfirmRemove(),
                 doubleColumnDisplay = dataSource.getDoubleColumnDisplay()
+            )
+        }
+    }
+
+    fun setServiceStarting(starting: Boolean) {
+        _uiState.update { state ->
+            state.copy(
+                isStarting = starting,
+                statusText = when {
+                    starting -> connectingText
+                    state.isRunning -> connectedText
+                    else -> disconnectedText
+                },
             )
         }
     }
@@ -861,6 +886,7 @@ class MainViewModel(
         _uiState.update { state ->
             state.copy(
                 isRunning = running,
+                isStarting = false,
                 statusText = if (!clearTestingText && state.isTesting) state.statusText
                 else if (running) connectedText else disconnectedText,
                 geoLocation = if (runningChanged) null else state.geoLocation,
@@ -884,21 +910,65 @@ class MainViewModel(
                     exitIpFailed = false,
                 )
             }
-            if (useProxy) delay(750L)
-            val startedAt = SystemClock.elapsedRealtime()
-            val location = runCatching { dataSource.getIPLocation(useProxy) }
-                .onFailure { LogUtil.e(AppConfig.TAG, "Failed to locate public IP", it) }
-                .getOrNull()
-                ?.takeIf { it.ip.isNotBlank() }
+            var startedAt = SystemClock.elapsedRealtime()
+            var location: com.v2ray.ang.dto.GeoLocation? = null
+            exitIpRetryDelays(useProxy).forEachIndexed { attempt, delayBeforeAttempt ->
+                if (location != null) return@forEachIndexed
+                if (delayBeforeAttempt > 0L) delay(delayBeforeAttempt)
+                currentCoroutineContext().ensureActive()
+                if (requestId != locationRequestId || _uiState.value.isRunning != useProxy) {
+                    return@launch
+                }
+                location = runCatching {
+                    startedAt = SystemClock.elapsedRealtime()
+                    dataSource.getIPLocation(useProxy, enrichLocation = false)
+                }
+                    .onFailure {
+                        LogUtil.w(
+                            AppConfig.TAG,
+                            "Exit IP lookup attempt ${attempt + 1} failed: ${it.message}",
+                        )
+                    }
+                    .getOrNull()?.takeIf { it.ip.isNotBlank() }
+                RuntimeDiagnostics.exitIp(app, "request=$requestId attempt=${attempt + 1} proxy=$useProxy success=${location != null}")
+            }
+            if (useProxy && location == null && requestId == locationRequestId && _uiState.value.isRunning) {
+                _uiState.update { it.copy(isLocating = false, exitIpFailed = true) }
+                location = recoverExitIp(
+                    isCurrent = { dashboardVisible && requestId == locationRequestId && _uiState.value.isRunning },
+                ) {
+                    startedAt = SystemClock.elapsedRealtime()
+                    dataSource.getIPLocation(useProxy = true, enrichLocation = false).also {
+                        RuntimeDiagnostics.exitIp(app, "request=$requestId recovery success=${it != null}")
+                    }
+                } ?: return@launch
+            }
+            currentCoroutineContext().ensureActive()
             val latencyMs = SystemClock.elapsedRealtime() - startedAt
             if (requestId == locationRequestId && _uiState.value.isRunning == useProxy) {
                 _uiState.update {
                     it.copy(
                         geoLocation = location,
-                        isLocating = false,
+                        isLocating = location != null && !location.hasLocationDetails,
                         exitIpLatencyMs = latencyMs.takeIf { location != null },
                         exitIpFailed = useProxy && location == null,
                     )
+                }
+            }
+            if (location != null && !location.hasLocationDetails) {
+                val enriched = enrichExitLocation(location) { known ->
+                    if (requestId != locationRequestId || _uiState.value.isRunning != useProxy) {
+                        throw CancellationException("Exit location request was superseded")
+                    }
+                    dataSource.getIPLocation(
+                        useProxy = useProxy,
+                        enrichLocation = true,
+                        knownLocation = known,
+                    )
+                }
+                currentCoroutineContext().ensureActive()
+                if (requestId == locationRequestId && _uiState.value.isRunning == useProxy) {
+                    _uiState.update { it.copy(geoLocation = enriched, isLocating = false) }
                 }
             }
         }
@@ -927,3 +997,6 @@ class MainViewModel(
         }
     }
 }
+
+internal fun exitIpRetryDelays(useProxy: Boolean): List<Long> =
+    if (useProxy) listOf(0L, 300L, 700L, 1_500L) else listOf(0L)

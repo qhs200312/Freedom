@@ -120,21 +120,44 @@ object Hysteria2Fmt : FmtBase() {
 
     private fun applyFinalMaskFields(config: ProfileItem) {
         val finalMask = JsonUtil.parseString(config.finalMask) ?: return
-        val quicParams = finalMask.objectValue("quicParams") ?: return
+        finalMask.objectValue("quicParams")?.let { quicParams ->
+            if (config.bandwidthDown.isNullOrBlank()) {
+                config.bandwidthDown = quicParams.stringValue("brutalDown")?.let(::parseBandwidth)
+            }
+            if (config.bandwidthUp.isNullOrBlank()) {
+                config.bandwidthUp = quicParams.stringValue("brutalUp")?.let(::parseBandwidth)
+            }
 
-        if (config.bandwidthDown.isNullOrBlank()) {
-            config.bandwidthDown = quicParams.stringValue("brutalDown")?.let(::parseBandwidth)
-        }
-        if (config.bandwidthUp.isNullOrBlank()) {
-            config.bandwidthUp = quicParams.stringValue("brutalUp")?.let(::parseBandwidth)
+            quicParams.objectValue("udpHop")?.let { udpHop ->
+                if (config.portHopping.isNullOrBlank()) {
+                    config.portHopping = udpHop.stringValue("ports")
+                }
+                if (config.portHoppingInterval.isNullOrBlank()) {
+                    config.portHoppingInterval = udpHop.stringValue("interval")
+                }
+            }
         }
 
-        val udpHop = quicParams.objectValue("udpHop") ?: return
+        val udpHopMask = finalMask.arrayValue("udp")
+            ?.firstOrNull { mask ->
+                mask.isJsonObject && mask.asJsonObject.stringValue("type")?.equals("udphop", ignoreCase = true) == true
+            }
+            ?.asJsonObject
+        val udpHopSettings = udpHopMask?.objectValue("settings")
         if (config.portHopping.isNullOrBlank()) {
-            config.portHopping = udpHop.stringValue("ports")
+            config.portHopping = udpHopSettings?.stringValue("remotePorts")
         }
         if (config.portHoppingInterval.isNullOrBlank()) {
-            config.portHoppingInterval = udpHop.stringValue("interval")
+            config.portHoppingInterval = udpHopSettings?.stringValue("interval")
+        }
+        if (config.obfsPassword.isNullOrBlank()) {
+            config.obfsPassword = finalMask.arrayValue("udp")
+                ?.firstOrNull { mask ->
+                    mask.isJsonObject && mask.asJsonObject.stringValue("type")?.equals("salamander", ignoreCase = true) == true
+                }
+                ?.asJsonObject
+                ?.objectValue("settings")
+                ?.stringValue("password")
         }
     }
 
@@ -167,4 +190,10 @@ object Hysteria2Fmt : FmtBase() {
             ?.asString
             ?.nullIfBlank()
     }
+
+    private fun JsonObject.arrayValue(key: String) =
+        entrySet().firstOrNull { it.key.equals(key, ignoreCase = true) }
+            ?.value
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
 }

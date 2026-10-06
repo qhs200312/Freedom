@@ -12,8 +12,18 @@ import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MyContextWrapper
 import java.lang.ref.SoftReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CoreProxyOnlyService : Service(), ServiceControl {
+    private val stopping = AtomicBoolean(false)
+    private val starting = AtomicBoolean(false)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    override fun isStopRequested(): Boolean = stopping.get()
     /**
      * Initializes the service.
      */
@@ -31,13 +41,21 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      * @return The start mode.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        NotificationManager.ensureForeground()
+        NotificationManager.ensureForeground(this)
         LogUtil.i(AppConfig.TAG, "StartCore-Proxy: Service command received")
 
-        if (!CoreServiceManager.startCoreLoop(null)) {
-            LogUtil.e(AppConfig.TAG, "StartCore-Proxy: Failed to start core loop")
-            stopSelf()
-            return START_NOT_STICKY
+        if (stopping.get()) return START_NOT_STICKY
+        if (CoreServiceManager.isRunning() || !starting.compareAndSet(false, true)) return START_STICKY
+        serviceScope.launch {
+            try {
+                SettingsManager.refreshRuntimeSocksPort()
+                if (!CoreServiceManager.startCoreLoop(null)) stopService()
+            } catch (error: Exception) {
+                LogUtil.e(AppConfig.TAG, "Proxy service startup failed", error)
+                stopService()
+            } finally {
+                starting.set(false)
+            }
         }
 
         return START_STICKY
@@ -47,8 +65,20 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      * Destroys the service.
      */
     override fun onDestroy() {
-        CoreServiceManager.stopCoreLoop(this)
+        stopService()
+        serviceScope.cancel()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (isTransientShortcutTask(rootIntent)) {
+            LogUtil.i(AppConfig.TAG, "StartCore-Proxy: Ignoring shortcut task removal")
+            super.onTaskRemoved(rootIntent)
+            return
+        }
+        LogUtil.i(AppConfig.TAG, "StartCore-Proxy: App task removed, stopping service")
+        stopService()
+        super.onTaskRemoved(rootIntent)
     }
 
     /**
@@ -70,7 +100,8 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      * Stops the service.
      */
     override fun stopService() {
-        stopSelf()
+        if (!stopping.compareAndSet(false, true)) return
+        CoreServiceManager.stopCoreLoop(this) { stopSelf() }
     }
 
     /**

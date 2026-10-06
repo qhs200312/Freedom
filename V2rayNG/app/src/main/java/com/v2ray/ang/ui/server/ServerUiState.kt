@@ -9,6 +9,7 @@ import com.v2ray.ang.AppConfig.REALITY
 import com.v2ray.ang.AppConfig.WIREGUARD_LOCAL_ADDRESS_V4
 import com.v2ray.ang.AppConfig.WIREGUARD_LOCAL_MTU
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.core.CoreSelector
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.extension.nullIfBlank
@@ -61,6 +62,7 @@ class ServerUiState(
     echConfigList: String = "",
     verifyPeerCertByName: String = "",
     pinnedCA256: String = "",
+    preferredCore: String = "AUTO",
     isFetchingCert: Boolean = false
 ) {
     var configType by mutableStateOf(configType)
@@ -109,6 +111,7 @@ class ServerUiState(
     var echConfigList by mutableStateOf(echConfigList)
     var verifyPeerCertByName by mutableStateOf(verifyPeerCertByName)
     var pinnedCA256 by mutableStateOf(pinnedCA256)
+    var preferredCore by mutableStateOf(preferredCore)
     var isFetchingCert by mutableStateOf(isFetchingCert)
 
     fun toProfileItem(initialConfig: ProfileItem): ProfileItem {
@@ -175,7 +178,12 @@ class ServerUiState(
             mldsa65Verify = mldsa65Verify,
             echConfigList = echConfigList,
             verifyPeerCertByName = verifyPeerCertByName,
-            pinnedCA256 = pinnedCA256
+            pinnedCA256 = pinnedCA256,
+            preferredCore = if (configType in CoreSelector.configurableProtocols) {
+                preferredCore
+            } else {
+                initialConfig.preferredCore
+            }
         )
     }
 
@@ -229,7 +237,9 @@ class ServerUiState(
                 mldsa65Verify = initialConfig.mldsa65Verify ?: "",
                 echConfigList = initialConfig.echConfigList ?: "",
                 verifyPeerCertByName = initialConfig.verifyPeerCertByName ?: "",
-                pinnedCA256 = initialConfig.pinnedCA256 ?: ""
+                pinnedCA256 = initialConfig.pinnedCA256 ?: "",
+                preferredCore = initialConfig.preferredCore
+                    ?: if (initialConfig.configType == EConfigType.HYSTERIA2) "SING_BOX" else "AUTO"
             )
 
         fun from(

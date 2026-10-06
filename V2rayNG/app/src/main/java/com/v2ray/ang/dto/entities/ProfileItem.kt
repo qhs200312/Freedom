@@ -73,6 +73,9 @@ data class ProfileItem(
     var proxyChainProfiles: String? = null,
 
     var browserDialerMode: String? = null,
+
+    /** Optional runtime selector: AUTO, XRAY, or SING_BOX. Null preserves legacy AUTO behavior. */
+    var preferredCore: String? = null,
 ) {
 
     companion object {

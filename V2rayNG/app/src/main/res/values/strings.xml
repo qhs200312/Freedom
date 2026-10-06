@@ -121,6 +121,7 @@
     <string name="server_obfs_password">Obfs password</string>
     <string name="server_lab_port_hop">Port Hopping(will override the port)</string>
     <string name="server_lab_port_hop_interval">Port Hopping Interval</string>
+    <string name="server_lab_preferred_core">Preferred core</string>
     <string name="server_lab_bandwidth_down">Bandwidth down (Supported units: k/m/g/t)</string>
     <string name="server_lab_bandwidth_up">Bandwidth up (Supported units: k/m/g/t)</string>
     <string name="server_lab_xhttp_mode">XHTTP Mode</string>
@@ -168,6 +169,8 @@
     <string name="title_settings">Settings</string>
     <string name="title_advanced">Advanced Settings</string>
     <string name="title_core_settings">Core Settings</string>
+    <string name="title_pref_protocol_default_core">%1$s default core</string>
+    <string name="core_preference_auto">Automatic / follow protocol default</string>
     <string name="title_vpn_settings">VPN Settings</string>
     <string name="title_location_privacy_settings">Location &amp; privacy</string>
     <string name="title_pref_per_app_proxy">Per-app proxy</string>
@@ -263,9 +266,11 @@
     <string name="title_pref_disable_non_proxied_udp">Disable non-proxied UDP</string>
     <string name="summary_pref_disable_non_proxied_udp">Block UDP traffic matched by direct routing rules while keeping proxied UDP available.</string>
     <string name="title_pref_block_google_location_endpoints">Block Google location endpoints</string>
-    <string name="summary_pref_block_google_location_endpoints">Block only the exact hosts observed during Google location requests: mapsmobilesdks-pa.googleapis.com and www.googleapis.com. Other APIs using www.googleapis.com may also be affected.</string>
+    <string name="summary_pref_block_google_location_endpoints">Block Google location and shared API endpoints while allowing only the dedicated Gemini Live connection hosts.</string>
     <string name="title_pref_block_google_maps_services">Block Google Maps services</string>
-    <string name="summary_pref_block_google_maps_services">DNS-blackhole and block Google Maps-specific map, tile, Street View, Places and route hosts. Shared Google hosts are excluded to reduce impact on Search, Gemini and push notifications.</string>
+    <string name="summary_pref_block_google_maps_services">Block dedicated Google Maps, tile, Street View, Places and route hosts. Shared Maps SDK hosts are forced through the proxy to prevent direct-IP exposure.</string>
+    <string name="title_pref_strict_block_google_maps_sdk_endpoints">Strictly block shared Maps SDK endpoints</string>
+    <string name="summary_pref_strict_block_google_maps_sdk_endpoints">Also block clients4.google.com and csi.gstatic.com, excluding Google Search. This can affect other Google services.</string>
     <string name="title_pref_auto_disable_location_with_proxy">Disable location while proxy is active</string>
     <string name="summary_pref_auto_disable_location_with_proxy">Root required. Freedom records the current location state, turns location off after the proxy starts, and restores only the state it changed when the proxy stops.</string>
     <string name="summary_pref_socks_port">Local proxy port</string>
@@ -406,6 +411,7 @@
     <string name="connection_test_error_status_code">Error code: #%d</string>
     <string name="connection_connected">Connected, tap to check connection</string>
     <string name="connection_not_connected">Not connected</string>
+    <string name="connection_connecting">Connecting…</string>
     <string name="connection_runing_task_left">Number of running test tasks: %s</string>
 
     <string name="import_subscription_success">Subscription imported Successfully</string>
@@ -524,8 +530,11 @@
     <string name="home_not_connected">Not connected</string>
     <string name="home_locating">Locating IP</string>
     <string name="home_location_unavailable">Location unavailable</string>
+    <string name="home_location_resolving">Resolving location</string>
     <string name="home_current_ip">Current IP  %1$s</string>
     <string name="home_virtual_ip">Virtual IP  %1$s</string>
+    <string name="home_ipv4_value">IPv4  %1$s</string>
+    <string name="home_ipv6_value">IPv6  %1$s</string>
     <string name="home_connect">Connect</string>
     <string name="home_disconnect">Disconnect</string>
     <string name="home_upload">Upload</string>
@@ -548,13 +557,14 @@
     <string name="home_average">Average</string>
     <string name="home_session_traffic">Session traffic</string>
     <string name="home_cumulative_traffic">Cumulative traffic</string>
-    <string name="home_memory">Memory</string>
+    <string name="home_memory">App Memory (PSS)</string>
     <string name="home_active_mode">Current mode</string>
     <string name="home_exit_ip">Exit IP</string>
+    <string name="home_proxy_exit_status">Connected · proxy exit</string>
     <string name="home_country_region">Country / region</string>
     <string name="home_exit_latency">Latency</string>
     <string name="home_exit_latency_value">%1$d ms</string>
-    <string name="home_exit_connection_failed">Connection failed</string>
+    <string name="home_exit_connection_failed">Exit IP lookup failed</string>
     <string name="home_refresh_exit_ip">Refresh exit IP</string>
     <string name="home_map_exit_latency">Latency %1$d ms</string>
     <string name="home_node_list">Nodes</string>

@@ -53,7 +53,7 @@ fun CheckUpdateScreen(
     val showUpdateDialog by viewModel.showUpdateDialog.collectAsStateWithLifecycle()
     val updateResult by viewModel.updateResult.collectAsStateWithLifecycle()
 
-    val versionText = "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()})"
+    val versionText = "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()}, sing-box v${CoreNativeManager.getSingBoxVersion()})"
 
     LaunchedEffect(Unit) {
         viewModel.checkForUpdates()

@@ -1,0 +1,54 @@
+diff --git a/src/hev-jni.c b/src/hev-jni.c
+index 6639837..3fee361 100644
+--- a/src/hev-jni.c
++++ b/src/hev-jni.c
+@@ -19,6 +19,7 @@
+ #include <string.h>
+ 
+ #include "hev-main.h"
++#include "hev-socks5-tunnel.h"
+ 
+ #include "hev-jni.h"
+ 
+@@ -187,8 +188,10 @@ exit:
+ static jboolean
+ native_is_running (JNIEnv *env, jobject thiz)
+ {
+-    return atomic_load_explicit (&is_running, memory_order_acquire) ? JNI_TRUE :
+-                                                                      JNI_FALSE;
++    return atomic_load_explicit (&is_running, memory_order_acquire) &&
++                   hev_socks5_tunnel_is_running ()
++               ? JNI_TRUE
++               : JNI_FALSE;
+ }
+ 
+ static jlongArray
+diff --git a/src/hev-socks5-tunnel.c b/src/hev-socks5-tunnel.c
+index 7d692ec..f92f1a5 100644
+--- a/src/hev-socks5-tunnel.c
++++ b/src/hev-socks5-tunnel.c
+@@ -765,6 +765,12 @@ retry:
+     atomic_fetch_and (&tsync, ~SYNC_WAIT);
+ }
+ 
++int
++hev_socks5_tunnel_is_running (void)
++{
++    return READ_ONCE (run);
++}
++
+ void
+ hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
+                          size_t *rx_packets, size_t *rx_bytes)
+diff --git a/src/hev-socks5-tunnel.h b/src/hev-socks5-tunnel.h
+index 3086329..7604a6d 100644
+--- a/src/hev-socks5-tunnel.h
++++ b/src/hev-socks5-tunnel.h
+@@ -17,6 +17,7 @@ void hev_socks5_tunnel_fini (void);
+ 
+ int hev_socks5_tunnel_run (void);
+ void hev_socks5_tunnel_stop (void);
++int hev_socks5_tunnel_is_running (void);
+ 
+ void hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
+                               size_t *rx_packets, size_t *rx_bytes);

@@ -243,9 +243,11 @@
 
     <string name="title_pref_socks_port">本地代理埠</string>
     <string name="title_pref_block_google_location_endpoints">阻止 Google 定位端點</string>
-    <string name="summary_pref_block_google_location_endpoints">僅阻止封包擷取中隨 Google 定位請求出現的精確主機：mapsmobilesdks-pa.googleapis.com 與 www.googleapis.com。使用 www.googleapis.com 的其他 API 也可能受影響。</string>
+    <string name="summary_pref_block_google_location_endpoints">阻止 Google 定位與共用 API 端點，僅放行 Gemini Live 即時連線專用主機。</string>
     <string name="title_pref_block_google_maps_services">阻止 Google 地圖服務</string>
-    <string name="summary_pref_block_google_maps_services">透過 DNS 黑洞與路由阻斷 Google 地圖專用的地圖、圖磚、街景、地點及路線主機；排除共用 Google 主機，盡量不影響搜尋、Gemini 與推播。</string>
+    <string name="summary_pref_block_google_maps_services">阻斷 Google 地圖專用的地圖、圖磚、街景、地點及路線主機，並強制地圖 SDK 共用端點走代理，防止暴露直連 IP。</string>
+    <string name="title_pref_strict_block_google_maps_sdk_endpoints">嚴格阻斷地圖 SDK 共用端點</string>
+    <string name="summary_pref_strict_block_google_maps_sdk_endpoints">同時阻斷 clients4.google.com 與 csi.gstatic.com，不包含 Google 搜尋網域，可能影響其他 Google 服務。</string>
     <string name="title_pref_auto_disable_location_with_proxy">代理執行時自動關閉定位</string>
     <string name="summary_pref_auto_disable_location_with_proxy">需要 Root。代理啟動後記錄並關閉系統定位；代理停止時只恢復由 Freedom 改變的原始狀態，不會誤開原本已關閉的定位。</string>
     <string name="title_pref_enable_local_proxy">啟用本地代理</string>
@@ -390,6 +392,7 @@
     <string name="connection_test_error_status_code">"錯誤碼：(#%d)"</string>
     <string name="connection_connected">"已連線，輕觸以檢查連線能力"</string>
     <string name="connection_not_connected">"未連線"</string>
+    <string name="connection_connecting">正在連線…</string>
     <string name="connection_runing_task_left">運行中的測試任務數：%s</string>
 
     <string name="import_subscription_success">匯入訂閱成功</string>
@@ -526,9 +529,10 @@
     <string name="home_average">平均</string>
     <string name="home_session_traffic">本次流量</string>
     <string name="home_cumulative_traffic">累計流量</string>
-    <string name="home_memory">記憶體</string>
+    <string name="home_memory">應用記憶體 (PSS)</string>
     <string name="home_active_mode">目前模式</string>
     <string name="home_exit_ip">出口 IP</string>
+    <string name="home_proxy_exit_status">已連線 · 代理出口</string>
     <string name="home_country_region">國家 / 地區</string>
     <string name="home_node_list">節點列表</string>
     <string name="home_view_all">查看全部</string>

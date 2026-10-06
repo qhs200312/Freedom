@@ -10,6 +10,11 @@ if [[ ! -d $NDK_HOME ]]; then
   echo "Android NDK: NDK_HOME not found. please set env \$NDK_HOME"
   exit 1
 fi
+READINESS_PATCH="$__dir/patches/hev-tunnel-readiness.patch"
+if ! git -C "$__dir/hev-socks5-tunnel" apply --reverse --check "$READINESS_PATCH" 2>/dev/null; then
+  git -C "$__dir/hev-socks5-tunnel" apply --check "$READINESS_PATCH"
+  git -C "$__dir/hev-socks5-tunnel" apply "$READINESS_PATCH"
+fi
 TMPDIR=$(mktemp -d)
 clear_tmp () {
   rm -rf $TMPDIR

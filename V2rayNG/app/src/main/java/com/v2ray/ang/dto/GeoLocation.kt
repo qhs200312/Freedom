@@ -2,6 +2,8 @@ package com.v2ray.ang.dto
 
 data class GeoLocation(
     val ip: String,
+    val ipv4: String = "",
+    val ipv6: String = "",
     val countryCode: String = "",
     val country: String = "",
     val regionCode: String = "",
@@ -10,6 +12,16 @@ data class GeoLocation(
     val latitude: Double? = null,
     val longitude: Double? = null,
 ) {
+    val effectiveIpv4: String
+        get() = ipv4.ifBlank { ip.takeIf { it.isNotBlank() && !it.contains(':') }.orEmpty() }
+
+    val effectiveIpv6: String
+        get() = ipv6.ifBlank { ip.takeIf { it.contains(':') }.orEmpty() }
+
+    val hasLocationDetails: Boolean
+        get() = countryCode.isNotBlank() || country.isNotBlank() || region.isNotBlank() ||
+            city.isNotBlank() || hasCoordinates
+
     val placeLabel: String
         get() = listOf(city, region, country)
             .filter { it.isNotBlank() }

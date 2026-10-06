@@ -67,6 +67,10 @@ object CoreNativeManager {
         }
     }
 
+    fun getSingBoxVersion(): String = runCatching {
+        SingBoxCoreManager.version()
+    }.getOrDefault("Unknown")
+
     /**
      * Measure outbound connection delay.
      *

@@ -6,8 +6,21 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ServerSocket
+import java.net.InetSocketAddress
+import java.net.Proxy
 
 class HttpUtilTest {
+
+    @Test
+    fun unauthenticatedSocksUsesNativeJavaProxyPath() {
+        assertFalse(HttpUtil.requiresAuthenticatedSocksSocket(null, null))
+        assertFalse(HttpUtil.requiresAuthenticatedSocksSocket("", ""))
+    }
+
+    @Test
+    fun authenticatedSocksUsesCustomSocketFactory() {
+        assertTrue(HttpUtil.requiresAuthenticatedSocksSocket("user", "password"))
+    }
 
     @Test
     fun testIdnToASCII() {
@@ -48,6 +61,14 @@ class HttpUtilTest {
         ServerSocket(0).use { server ->
             assertTrue(HttpUtil.isTcpPortOpen("127.0.0.1", server.localPort))
         }
+    }
+
+    @Test
+    fun socksProxyIsUsedForExitIpProbe() {
+        val proxy = HttpUtil.buildProxy(httpPort = 10809, socksPort = 10808)
+
+        assertEquals(Proxy.Type.SOCKS, proxy?.type())
+        assertEquals(10808, (proxy?.address() as InetSocketAddress).port)
     }
 
 }

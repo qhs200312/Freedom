@@ -2,6 +2,7 @@ package com.v2ray.ang.core
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonElement
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -499,18 +500,35 @@ object CoreOutboundBuilder {
                         interval = interval
                     )
                 }
-                val finalmask = OutboundBean.StreamSettingsBean.FinalMaskBean(
-                    quicParams = quicParams
-                )
+                val finalmask = JsonObject().apply {
+                    add("quicParams", JsonObject().apply {
+                        quicParams.congestion?.let { addProperty("congestion", it) }
+                        quicParams.brutalUp?.let { addProperty("brutalUp", it) }
+                        quicParams.brutalDown?.let { addProperty("brutalDown", it) }
+                    })
+                }
                 if (profileItem.obfsPassword.isNotNullEmpty()) {
-                    finalmask.udp = listOf(
-                        OutboundBean.StreamSettingsBean.FinalMaskBean.MaskBean(
-                            type = "salamander",
-                            settings = OutboundBean.StreamSettingsBean.FinalMaskBean.MaskBean.MaskSettingsBean(
-                                password = profileItem.obfsPassword.orEmpty()
-                            )
-                        )
-                    )
+                    finalmask.add("udp", JsonArray().apply {
+                        add(JsonObject().apply {
+                            addProperty("type", "salamander")
+                            add("settings", JsonObject().apply {
+                                addProperty("password", profileItem.obfsPassword.orEmpty())
+                            })
+                        })
+                    })
+                }
+                if (profileItem.portHopping.isNotNullEmpty()) {
+                    val udpMasks = (finalmask.getAsJsonArray("udp") ?: JsonArray()).also {
+                        if (!finalmask.has("udp")) finalmask.add("udp", it)
+                    }
+                    udpMasks.add(JsonObject().apply {
+                        addProperty("type", "udphop")
+                        add("settings", JsonObject().apply {
+                            addProperty("mode", "intervalRemote")
+                            addProperty("interval", normalizePortHopInterval(profileItem.portHoppingInterval))
+                            addProperty("remotePorts", profileItem.portHopping)
+                        })
+                    })
                 }
                 streamSettings.hysteriaSettings = hysteriaSetting
                 streamSettings.finalmask = finalmask
@@ -519,7 +537,7 @@ object CoreOutboundBuilder {
         finalMask?.let {
             val parsedFinalMask = JsonUtil.parseString(finalMask)
             if (parsedFinalMask != null) {
-                streamSettings.finalmask = parsedFinalMask
+                streamSettings.finalmask = normalizeHysteriaFinalMask(parsedFinalMask)
             } else {
                 LogUtil.w("V2rayConfigManager", "Invalid finalMask JSON, keeping previously generated finalmask")
             }
@@ -683,10 +701,49 @@ object CoreOutboundBuilder {
         finalMask?.let {
             val parsedFinalMask = JsonUtil.parseString(profileItem.finalMask)
             if (parsedFinalMask != null) {
-                streamSettings.finalmask = parsedFinalMask
+                streamSettings.finalmask = normalizeHysteriaFinalMask(parsedFinalMask)
             } else {
                 LogUtil.w("V2rayConfigManager", "Invalid finalMask JSON, keeping previously generated finalmask")
             }
         }
+    }
+
+    private fun normalizePortHopInterval(value: String?): String {
+        val raw = value?.trim().orEmpty()
+        if (raw.isEmpty()) return "30"
+        val single = raw.toIntOrNull()
+        if (single != null) return if (single >= 5) raw else "30"
+        val parts = raw.split('-').map { it.trim().toIntOrNull() }
+        if (parts.size == 2 && parts[0] != null && parts[1] != null) {
+            val start = maxOf(5, parts[0]!!)
+            return "$start-${maxOf(start, parts[1]!!)}"
+        }
+        return "30"
+    }
+
+    /** Converts the removed quicParams.udpHop shape to the v26.9.9 udphop FinalMask. */
+    private fun normalizeHysteriaFinalMask(element: JsonElement): JsonElement {
+        if (!element.isJsonObject) return element
+        val root = element.asJsonObject.deepCopy()
+        val quicParams = root.getAsJsonObject("quicParams") ?: return root
+        val legacyHop = quicParams.remove("udpHop")?.takeIf { it.isJsonObject }?.asJsonObject ?: return root
+        val settings = JsonObject().apply {
+            addProperty("mode", "intervalRemote")
+            legacyHop.get("interval")?.let { add("interval", it) }
+            legacyHop.get("ports")?.let { add("remotePorts", it) }
+        }
+        val udp = (root.getAsJsonArray("udp") ?: JsonArray()).also {
+            if (!root.has("udp")) root.add("udp", it)
+        }
+        val alreadyPresent = udp.any { mask ->
+            mask.isJsonObject && mask.asJsonObject.get("type")?.asString.equals("udphop", ignoreCase = true)
+        }
+        if (!alreadyPresent) {
+            udp.add(JsonObject().apply {
+                addProperty("type", "udphop")
+                add("settings", settings)
+            })
+        }
+        return root
     }
 }

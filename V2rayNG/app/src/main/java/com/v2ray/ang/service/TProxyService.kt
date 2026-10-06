@@ -16,7 +16,7 @@ class TProxyService(
     private val context: Context,
     private val vpnInterface: ParcelFileDescriptor,
     private val isRunningProvider: () -> Boolean,
-    private val restartCallback: () -> Unit
+    private val restartCallback: () -> Unit,
 ) : Tun2SocksControl {
     companion object {
         @JvmStatic
@@ -43,7 +43,7 @@ class TProxyService(
     /**
      * Starts the tun2socks process with the appropriate parameters.
      */
-    override fun startTun2Socks() {
+    override fun startTun2Socks(): Boolean {
 //        LogUtil.i(AppConfig.TAG, "Starting HevSocks5Tunnel via JNI")
 
         val configContent = buildConfig()
@@ -55,10 +55,27 @@ class TProxyService(
 
         try {
 //            LogUtil.i(AppConfig.TAG, "TProxyStartService...")
-            TProxyStartService(configFile.absolutePath, vpnInterface.fd)
+            val accepted = TProxyStartService(configFile.absolutePath, vpnInterface.fd)
+            val deadline = android.os.SystemClock.elapsedRealtime() + 3_000L
+            while (!TProxyIsRunning() && android.os.SystemClock.elapsedRealtime() < deadline) {
+                Thread.sleep(25L)
+            }
+            val running = TProxyIsRunning()
+            if (!accepted || !running) {
+                LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel failed to become ready: accepted=$accepted running=$running")
+            }
+            return accepted && running
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "HevSocks5Tunnel exception: ${e.message}")
+            return false
         }
+    }
+
+    override fun getTrafficStats(): LongArray? = try {
+        TProxyGetStats()
+    } catch (error: Exception) {
+        LogUtil.w(AppConfig.TAG, "Unable to read HevSocks5Tunnel stats: ${error.message}")
+        null
     }
 
     private fun buildConfig(): String {

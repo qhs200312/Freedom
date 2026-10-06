@@ -6,6 +6,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
+import com.v2ray.ang.util.RuntimeDiagnostics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,7 @@ class LogcatViewModel(application: Application) : BaseViewModel(application) {
                 val allText = process.inputStream.bufferedReader().use { it.readLines() }.reversed()
 
                 logsetsAll.clear()
+                logsetsAll.addAll(RuntimeDiagnostics.read(app))
                 logsetsAll.addAll(allText)
                 applyFilter()
             } catch (e: IOException) {
@@ -53,6 +55,7 @@ class LogcatViewModel(application: Application) : BaseViewModel(application) {
             lst.add("-c")
             val process = Runtime.getRuntime().exec(lst.toTypedArray())
             process.waitFor()
+            RuntimeDiagnostics.clear(app)
 
             logsetsAll.clear()
             _filteredLogs.value = emptyList()

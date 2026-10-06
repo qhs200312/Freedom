@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,12 +53,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.enums.ProxyMode
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.extension.toTrafficString
 import com.v2ray.ang.ui.compose.LocalDarkTheme
+import com.v2ray.ang.util.AppMemoryReader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlin.math.max
 
 internal val DashboardBackground = Color(0xFF10181B)
@@ -183,8 +189,11 @@ private fun MapStatusPanel(
                     )
                     Text(
                         text = stringResource(
-                            if (uiState.isRunning) R.string.home_protected
-                            else R.string.home_not_connected,
+                            when {
+                                uiState.isStarting -> R.string.connection_connecting
+                                uiState.isRunning -> R.string.home_proxy_exit_status
+                                else -> R.string.home_not_connected
+                            },
                         ),
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -211,7 +220,8 @@ private fun MapStatusPanel(
                 Text(
                     text = when {
                         uiState.exitIpFailed -> stringResource(R.string.home_exit_connection_failed)
-                        location != null -> location.placeLabel
+                        location != null && location.hasLocationDetails -> location.placeLabel
+                        location != null -> stringResource(R.string.home_location_unavailable)
                         else -> stringResource(R.string.home_location_unavailable)
                     },
                     style = MaterialTheme.typography.titleMedium,
@@ -221,19 +231,27 @@ private fun MapStatusPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            val ip = location?.ip.orEmpty()
-            if (ip.isNotBlank()) {
+            val ipv4 = location?.effectiveIpv4.orEmpty()
+            val ipv6 = location?.effectiveIpv6.orEmpty()
+            if (ipv4.isNotBlank()) {
                 Text(
-                    text = stringResource(
-                        if (uiState.isRunning) R.string.home_virtual_ip
-                        else R.string.home_current_ip,
-                        ip,
-                    ),
+                    text = stringResource(R.string.home_ipv4_value, ipv4),
                     style = MaterialTheme.typography.bodySmall,
                     color = mapSecondaryContentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (ipv6.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.home_ipv6_value, ipv6),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = mapSecondaryContentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (ipv4.isNotBlank() || ipv6.isNotBlank()) {
                 uiState.exitIpLatencyMs?.let { latencyMs ->
                     Text(
                         text = stringResource(R.string.home_map_exit_latency, latencyMs),
@@ -247,6 +265,7 @@ private fun MapStatusPanel(
 
         Surface(
             onClick = { onAction(MainAction.ToggleService) },
+            enabled = !uiState.isStarting,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(y = 34.dp)
@@ -257,14 +276,22 @@ private fun MapStatusPanel(
             shadowElevation = 10.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_power_24dp),
-                    contentDescription = stringResource(
-                        if (uiState.isRunning) R.string.home_disconnect
-                        else R.string.home_connect,
-                    ),
-                    modifier = Modifier.size(30.dp),
-                )
+                if (uiState.isStarting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(30.dp),
+                        strokeWidth = 2.5.dp,
+                        color = Color.White,
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_power_24dp),
+                        contentDescription = stringResource(
+                            if (uiState.isRunning) R.string.home_disconnect
+                            else R.string.home_connect,
+                        ),
+                        modifier = Modifier.size(30.dp),
+                    )
+                }
             }
         }
     }
@@ -330,21 +357,6 @@ private fun TrafficDataCard(uiState: MainUiState) {
             uploadHistory = uploadHistory,
             downloadHistory = downloadHistory,
         )
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            SpeedStatistic(
-                label = stringResource(R.string.home_peak),
-                upload = uploadHistory.maxOrNull() ?: 0L,
-                download = downloadHistory.maxOrNull() ?: 0L,
-                modifier = Modifier.weight(1f),
-            )
-            SpeedStatistic(
-                label = stringResource(R.string.home_average),
-                upload = uploadHistory.averageLong(),
-                download = downloadHistory.averageLong(),
-                modifier = Modifier.weight(1f),
-            )
-        }
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 16.dp),
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
@@ -472,26 +484,6 @@ private fun SpeedHistoryChart(uploadHistory: List<Long>, downloadHistory: List<L
 }
 
 @Composable
-private fun SpeedStatistic(
-    label: String,
-    upload: Long,
-    download: Long,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        CompactMetric(R.drawable.ic_arrow_downward_24dp, download.toSpeedString(), DownloadGreen)
-        Spacer(Modifier.height(4.dp))
-        CompactMetric(R.drawable.ic_arrow_upward_24dp, upload.toSpeedString(), UploadBlue)
-    }
-}
-
-@Composable
 private fun TrafficTotal(
     label: String,
     upload: Long,
@@ -533,10 +525,16 @@ private fun CompactMetric(@DrawableRes icon: Int, value: String, color: Color) {
 
 @Composable
 private fun DeviceStatusCards(uiState: MainUiState) {
-    val usedMemoryMb = remember(uiState.traffic) {
-        val runtime = Runtime.getRuntime()
-        (runtime.totalMemory() - runtime.freeMemory()) / (1024L * 1024L)
+    val context = LocalContext.current.applicationContext
+    val memorySamples = remember(context) {
+        flow {
+            while (true) {
+                emit(AppMemoryReader.readPssKb(context))
+                delay(5_000L)
+            }
+        }.flowOn(Dispatchers.IO)
     }
+    val usedMemoryKb by memorySamples.collectAsStateWithLifecycle(initialValue = null)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -546,7 +544,7 @@ private fun DeviceStatusCards(uiState: MainUiState) {
         SmallStatusCard(
             icon = R.drawable.ic_lock_24dp,
             label = stringResource(R.string.home_memory),
-            value = "$usedMemoryMb MB",
+            value = usedMemoryKb?.let { "${it / 1024L} MB" } ?: "-",
             accent = TrafficOrange,
             modifier = Modifier.weight(1f),
         )
@@ -616,7 +614,14 @@ private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
         .filter { it.isNotBlank() }
         .distinct()
         .joinToString(" / ")
-        .ifBlank { if (uiState.exitIpFailed) connectionFailed else unavailable }
+        .ifBlank {
+            when {
+                uiState.exitIpFailed -> connectionFailed
+                uiState.isLocating && location != null && !location.hasLocationDetails ->
+                    stringResource(R.string.home_location_resolving)
+                else -> unavailable
+            }
+        }
 
     DashboardCard(
         modifier = Modifier.clickable(enabled = !uiState.isLocating) {
@@ -646,13 +651,19 @@ private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = if (uiState.exitIpFailed) connectionFailed
-                    else location?.ip.orEmpty().ifBlank { "-" },
+                    text = if (uiState.exitIpFailed) connectionFailed else buildList {
+                        location?.effectiveIpv4?.takeIf(String::isNotBlank)?.let {
+                            add(stringResource(R.string.home_ipv4_value, it))
+                        }
+                        location?.effectiveIpv6?.takeIf(String::isNotBlank)?.let {
+                            add(stringResource(R.string.home_ipv6_value, it))
+                        }
+                    }.joinToString("\n").ifBlank { "-" },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -745,6 +756,3 @@ private fun DashboardCard(
         )
     }
 }
-
-private fun List<Long>.averageLong(): Long =
-    if (isEmpty()) 0L else sum().div(size)

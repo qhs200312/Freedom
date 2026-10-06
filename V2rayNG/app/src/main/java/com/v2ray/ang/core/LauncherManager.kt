@@ -10,6 +10,7 @@ import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.root.RootManager
@@ -36,7 +37,7 @@ object LauncherManager {
         return true
     }
 
-    fun startService(context: Context, guid: String? = null) {
+    fun startService(context: Context, guid: String? = null): Boolean {
         LogUtil.i(AppConfig.TAG, "LauncherManager: startService from ${context::class.java.simpleName}")
 
         if (guid != null) {
@@ -48,12 +49,36 @@ object LauncherManager {
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "LauncherManager: ${e.message}", e)
             context.toast(e.message ?: e.javaClass.simpleName)
+            return false
         }
+        return true
     }
 
     fun stopService(context: Context) {
-        //context.toast(R.string.toast_services_stop)
+        // Keep the broadcast for the active service's mode-specific teardown, but do not
+        // depend on its dynamically registered receiver. A stop can arrive while the service
+        // is still starting, before that receiver exists, leaving its foreground notification.
         MessageHelper.sendMsg2Service(context, AppConfig.MSG_STATE_STOP, "")
+
+        val appContext = context.applicationContext
+        listOf(
+            CoreVpnService::class.java,
+            CoreRootService::class.java,
+            CoreProxyOnlyService::class.java,
+        ).forEach { serviceClass ->
+            try {
+                appContext.stopService(Intent(appContext, serviceClass))
+            } catch (e: Exception) {
+                LogUtil.w(
+                    AppConfig.TAG,
+                    "LauncherManager: Failed to stop ${serviceClass.simpleName}: ${e.message}",
+                )
+            }
+        }
+
+        // Also remove a stale notification immediately. The active service repeats this in
+        // onDestroy(), covering both sides of the cross-process shutdown.
+        NotificationManager.cancelNotification()
     }
 
     @Throws(Exception::class)
@@ -80,8 +105,6 @@ object LauncherManager {
             LogUtil.e(AppConfig.TAG, "LauncherManager: Invalid server configuration")
             error(context.getString(R.string.toast_config_file_invalid))
         }
-
-        SettingsManager.refreshRuntimeSocksPort()
 
         if (config.insecure == true && config.pinnedCA256.isNullOrEmpty()) {
             context.toastError(R.string.toast_allow_insecure_deprecated)

@@ -156,6 +156,10 @@ object MmkvManager {
         return JsonUtil.fromJsonSafe(json, ProfileItem::class.java)
     }
 
+    /** Returns the persisted profile JSON without deserializing, preserving unknown future fields. */
+    fun decodeServerConfigRaw(guid: String): String? =
+        if (guid.isBlank()) null else profileFullStorage.decodeString(guid)
+
 
     /**
      * Encodes the server configuration.
@@ -407,6 +411,7 @@ object MmkvManager {
      */
     fun decodeSubscriptions(): List<SubscriptionCache> {
         initSubsList()
+        reconcileLocalSubscription()
 
         val subscriptions = mutableListOf<SubscriptionCache>()
         decodeSubsList().forEach { key ->
@@ -417,6 +422,19 @@ object MmkvManager {
             }
         }
         return subscriptions
+    }
+
+    private fun reconcileLocalSubscription() {
+        val local = decodeSubscription(DEFAULT_SUBSCRIPTION_ID)
+        if (decodeServerList(DEFAULT_SUBSCRIPTION_ID).isNotEmpty()) {
+            if (local == null) SettingsManager.ensureDefaultSubscription()
+        } else if (local != null && local.url.isBlank()) {
+            // Remove only the group metadata; never delete profiles during a subscription read.
+            subStorage.remove(DEFAULT_SUBSCRIPTION_ID)
+            val subsList = decodeSubsList()
+            subsList.remove(DEFAULT_SUBSCRIPTION_ID)
+            encodeSubsList(subsList)
+        }
     }
 
     /**
@@ -546,6 +564,7 @@ object MmkvManager {
      * @return The list of routing rulesets.
      */
     fun decodeRoutingRulesets(): MutableList<RulesetItem>? {
+        settingsStorage.checkContentChangedByOuterProcess()
         val ruleset = settingsStorage.decodeString(PREF_ROUTING_RULESET)
         if (ruleset.isNullOrEmpty()) return null
         return JsonUtil.fromJsonSafe(ruleset, Array<RulesetItem>::class.java)?.toMutableList() ?: mutableListOf()
@@ -561,6 +580,7 @@ object MmkvManager {
             encodeSettings(PREF_ROUTING_RULESET, "")
         else
             encodeSettings(PREF_ROUTING_RULESET, JsonUtil.toJson(rulesetList))
+        settingsStorage.sync()
     }
 
     //endregion

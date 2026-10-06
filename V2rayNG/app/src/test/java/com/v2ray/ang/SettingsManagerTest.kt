@@ -9,6 +9,19 @@ import org.junit.Test
 
 class SettingsManagerTest {
     @Test
+    fun googleProbeSettingsAreReplacedWithoutChangingOtherHosts() {
+        listOf(null, "", "https://www.google.com/generate_204",
+            "https://google.com/generate_204", AppConfig.LEGACY_DELAY_TEST_URL,
+            "https://connectivitycheck.gstatic.com/generate_204",
+        ).forEach {
+            assertEquals(AppConfig.DELAY_TEST_URL, SettingsManager.normalizeDelayTestUrl(it))
+        }
+        listOf("https://example.org/check", "https://google.com.example.org/check").forEach {
+            assertEquals(it, SettingsManager.normalizeDelayTestUrl(it))
+        }
+    }
+
+    @Test
     fun googleProxyRuleIsExpandedWithoutChangingCustomFields() {
         val googleRule = RulesetItem(
             id = "google-rule",
@@ -97,5 +110,56 @@ class SettingsManagerTest {
 
         assertFalse(SettingsManager.ensureGoogleProxyCoverage(rulesets))
         assertEquals(original, rulesets)
+    }
+
+    @Test
+    fun missingChinaRulesAreInsertedBeforeCatchAllProxy() {
+        val catchAll = RulesetItem(
+            remarks = "Final proxy",
+            port = "0-65535",
+            outboundTag = AppConfig.TAG_PROXY,
+        )
+        val rulesets = mutableListOf(
+            RulesetItem(domain = listOf("domain:example.com"), outboundTag = AppConfig.TAG_PROXY),
+            catchAll,
+        )
+
+        assertTrue(SettingsManager.ensureChinaDirectCoverage(rulesets))
+
+        assertEquals(listOf(AppConfig.GEOIP_CN), rulesets[1].ip)
+        assertEquals(AppConfig.TAG_DIRECT, rulesets[1].outboundTag)
+        assertEquals(listOf(AppConfig.GEOSITE_CN), rulesets[2].domain)
+        assertEquals(AppConfig.TAG_DIRECT, rulesets[2].outboundTag)
+        assertEquals(catchAll, rulesets[3])
+    }
+
+    @Test
+    fun existingChinaRulesAreNotOverriddenOrDuplicated() {
+        val customIpRule = RulesetItem(
+            ip = listOf("GEOIP:CN"),
+            outboundTag = AppConfig.TAG_PROXY,
+            enabled = false,
+        )
+        val customDomainRule = RulesetItem(
+            domain = listOf("GEOSITE:CN"),
+            outboundTag = AppConfig.TAG_BLOCKED,
+        )
+        val rulesets = mutableListOf(customIpRule, customDomainRule)
+
+        assertFalse(SettingsManager.ensureChinaDirectCoverage(rulesets))
+        assertEquals(listOf(customIpRule, customDomainRule), rulesets)
+    }
+
+    @Test
+    fun migrationAddsOnlyTheMissingChinaRule() {
+        val existing = RulesetItem(
+            ip = listOf(AppConfig.GEOIP_CN),
+            outboundTag = AppConfig.TAG_DIRECT,
+        )
+        val rulesets = mutableListOf(existing)
+
+        assertTrue(SettingsManager.ensureChinaDirectCoverage(rulesets))
+        assertEquals(existing, rulesets[0])
+        assertEquals(listOf(AppConfig.GEOSITE_CN), rulesets[1].domain)
     }
 }

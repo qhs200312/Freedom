@@ -65,7 +65,11 @@ interface MainDataSource : Closeable {
     fun sendMsg2TestService(msg: TestServiceMessage)
     fun cancelAllPing()
     fun testCurrentServerRealPing()
-    fun getIPLocation(useProxy: Boolean): GeoLocation?
+    fun getIPLocation(
+        useProxy: Boolean,
+        enrichLocation: Boolean = true,
+        knownLocation: GeoLocation? = null,
+    ): GeoLocation?
 
     fun syncSubscriptions()
 

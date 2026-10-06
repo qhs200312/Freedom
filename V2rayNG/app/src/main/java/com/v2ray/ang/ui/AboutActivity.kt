@@ -53,7 +53,7 @@ fun AboutScreen(onBackClick: () -> Unit) {
     val context = LocalContext.current
     var showOssDialog by remember { mutableStateOf(false) }
 
-    val versionText = "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()})"
+    val versionText = "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()}, sing-box v${CoreNativeManager.getSingBoxVersion()})"
     val appIdText = BuildConfig.APPLICATION_ID
 
     Scaffold(

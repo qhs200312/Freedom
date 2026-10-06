@@ -69,6 +69,8 @@ object AppConfig {
     const val PREF_DISABLE_NON_PROXIED_UDP = "pref_disable_non_proxied_udp"
     const val PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS = "pref_block_google_location_endpoints"
     const val PREF_BLOCK_GOOGLE_MAPS_SERVICES = "pref_block_google_maps_services"
+    const val PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS = "pref_strict_block_google_maps_sdk_endpoints"
+    const val DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS = true
     const val PREF_AUTO_DISABLE_LOCATION_WITH_PROXY = "pref_auto_disable_location_with_proxy"
     const val PREF_LOCATION_DISABLED_BY_FREEDOM = "pref_location_disabled_by_freedom"
     const val PREF_LOCATION_MODE_BEFORE_PROXY = "pref_location_mode_before_proxy"
@@ -79,6 +81,8 @@ object AppConfig {
     const val PREF_DELAY_TEST_URL = "pref_delay_test_url"
     const val PREF_IP_API_URL = "pref_ip_api_url"
     const val PREF_LOGLEVEL = "pref_core_loglevel"
+    const val PREF_HY2_DEFAULT_CORE = "pref_hy2_default_core"
+    const val PREF_PROTOCOL_DEFAULT_CORE_PREFIX = "pref_protocol_default_core_"
     const val PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD = "pref_outbound_domain_resolve_method"
     const val PREF_MODE = "pref_mode"
     const val PREF_ROOT_MODE_ENABLE = "pref_root_mode_enabled"
@@ -87,7 +91,6 @@ object AppConfig {
     const val PREF_IS_BOOTED = "pref_is_booted"
     const val PREF_CHECK_UPDATE_PRE_RELEASE = "pref_check_update_pre_release"
     const val PREF_GEO_FILES_SOURCES = "pref_geo_files_sources"
-    const val PREF_USE_HEV_TUNNEL = "pref_use_hev_tunnel_v2"
     const val PREF_HEV_TUNNEL_LOGLEVEL = "pref_hev_tunnel_loglevel"
     const val PREF_HEV_TUNNEL_RW_TIMEOUT = "pref_hev_tunnel_rw_timeout_v2"
     const val PREF_UPDATE_SUBSCRIPTION = "pref_update_subscription"
@@ -96,6 +99,7 @@ object AppConfig {
     const val PREF_AUTO_REMOVE_INVALID_AFTER_TEST = "pref_auto_remove_invalid_after_test"
     const val PREF_AUTO_SORT_AFTER_TEST = "pref_auto_sort_after_test"
     const val PREF_REAL_PING_CONCURRENCY = "pref_real_ping_concurrency"
+    const val PREF_CORE_PROFILE_MIGRATION = "pref_core_profile_migration"
 
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"
@@ -142,8 +146,8 @@ object AppConfig {
     const val APP_PROMOTION_URL = "aHR0cHM6Ly85LjIzNDQ1Ni54eXovYWJjLmh0bWw="
     const val TG_CHANNEL_URL = "https://t.me/github_2dust"
     const val LEGACY_DELAY_TEST_URL = "https://www.gstatic.com/generate_204"
-    const val DELAY_TEST_URL = "https://www.google.com/generate_204"
-    const val DELAY_TEST_URL2 = "https://google.com/generate_204"
+    const val DELAY_TEST_URL = "https://cp.cloudflare.com/generate_204"
+    const val DELAY_TEST_URL2 = DELAY_TEST_URL
     const val OBSERVATORY_LEAST_PING_INTERVAL = "3m"
     const val OBSERVATORY_LEAST_LOAD_INTERVAL = "5m"
     const val OBSERVATORY_LEAST_LOAD_METHOD = "HEAD"
@@ -166,6 +170,8 @@ object AppConfig {
     const val GEOSITE_DAT = "geosite.dat"
     const val GEOIP_DAT = "geoip.dat"
     const val GEOIP_ONLY_CN_PRIVATE_DAT = "geoip-only-cn-private.dat"
+    const val SING_GEOIP_CN_SRS = "geoip-cn.srs"
+    const val SING_GEOSITE_CN_SRS = "geosite-cn.srs"
     const val GEOIP_ONLY_CN_PRIVATE_URL = "$GITHUB_RAW_URL/Loyalsoldier/geoip/release/$GEOIP_ONLY_CN_PRIVATE_DAT"
 
     /** Ports and addresses for various services. */
@@ -256,11 +262,16 @@ object AppConfig {
 
     // Google API rule constants
     const val GOOGLEAPIS_CN_DOMAIN = "domain:googleapis.cn"
+    val GEMINI_LIVE_DOMAINS = listOf(
+        "full:robinfrontend-pa.googleapis.com",
+        "full:signaler-pa.googleapis.com",
+    )
     val GOOGLE_LOCATION_ENDPOINT_DOMAINS = listOf(
         "full:mapsmobilesdks-pa.googleapis.com",
         "full:www.googleapis.com",
     )
     val GOOGLE_MAPS_SERVICE_DOMAINS = listOf(
+        "full:maps.google.com",
         "full:maps.googleapis.com",
         "full:mapsresources-pa.googleapis.com",
         "full:maps.gstatic.com",
@@ -306,6 +317,10 @@ object AppConfig {
         "full:cbks2.googleapis.com",
         "full:cbks3.google.com",
         "full:cbks3.googleapis.com",
+    )
+    val GOOGLE_MAPS_SHARED_SDK_DOMAINS = listOf(
+        "full:clients4.google.com",
+        "full:csi.gstatic.com",
     )
     const val GOOGLEAPIS_COM_DOMAIN = "googleapis.com"
 

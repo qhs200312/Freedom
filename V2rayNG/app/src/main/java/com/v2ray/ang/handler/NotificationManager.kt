@@ -117,10 +117,55 @@ object NotificationManager {
      * return early. A duplicate startForegroundService call still requires the service
      * to enter foreground state promptly, even when the core is already running.
      */
-    fun ensureForeground() {
-        val service = getService() ?: return
+    fun ensureForeground(service: Service? = getService()) {
+        val foregroundService = service ?: return
         val notification = mBuilder?.build()
-        if (notification == null) showNotification(null) else service.startForeground(NOTIFICATION_ID, notification)
+        if (notification == null) {
+            showNotification(foregroundService, null)
+        } else {
+            foregroundService.startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun showNotification(service: Service, currentConfig: ProfileItem?) {
+        val previousService = CoreServiceManager.serviceControl
+        if (previousService?.get()?.getService() === service) {
+            showNotification(currentConfig)
+            return
+        }
+
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val contentPendingIntent = PendingIntent.getActivity(
+            service,
+            NOTIFICATION_PENDING_INTENT_CONTENT,
+            Intent(service, MainActivity::class.java),
+            flags,
+        )
+        val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                AppConfig.RAY_NG_CHANNEL_ID,
+                AppConfig.RAY_NG_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                lightColor = Color.DKGRAY
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            }
+            (service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(channel)
+            AppConfig.RAY_NG_CHANNEL_ID
+        } else {
+            ""
+        }
+        val notification = NotificationCompat.Builder(service, channelId)
+            .setSmallIcon(R.drawable.ic_stat_name)
+            .setContentTitle(service.getString(R.string.app_name))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(contentPendingIntent)
+            .build()
+        service.startForeground(NOTIFICATION_ID, notification)
     }
 
     /**

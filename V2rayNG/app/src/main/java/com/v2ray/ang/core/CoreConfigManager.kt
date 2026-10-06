@@ -21,6 +21,7 @@ import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.PackageUidResolver
 import com.v2ray.ang.util.Utils
+import java.io.File
 
 object CoreConfigManager {
     private var initConfigCache: String? = null
@@ -167,6 +168,7 @@ object CoreConfigManager {
 
         // User routing rules (policyGroupBalancerTags rewrites TAG_PROXY→balancer when main is POLICYGROUP).
         configureRouting(configContext, v2rayConfig, policyGroupBalancerTags)
+        configureStunProxy(v2rayConfig, policyGroupBalancerTags[AppConfig.TAG_PROXY])
         configureFakeDns(v2rayConfig)
         configureDns(configContext, v2rayConfig, policyGroupBalancerTags)
         configureLocalDns(configContext, v2rayConfig)
@@ -453,22 +455,24 @@ object CoreConfigManager {
     //region some sub function
 
     private fun needTun(): Boolean {
-        return !SettingsManager.isRootMode() &&
-            SettingsManager.isVpnMode() &&
-            !SettingsManager.isUsingHevTun()
+        return shouldUseNativeTun(
+            rootMode = SettingsManager.isRootMode(),
+            vpnMode = SettingsManager.isVpnMode(),
+        )
     }
+
+    internal fun shouldUseNativeTun(rootMode: Boolean, vpnMode: Boolean): Boolean =
+        !rootMode && vpnMode
 
     /**
      * Configure inbound listeners and related runtime options.
      */
     private fun configureInbounds(v2rayConfig: V2rayConfig) {
         val vpn = SettingsManager.isVpnMode()
-        val useHev = SettingsManager.isUsingHevTun()
-        val forcedByHev = vpn && useHev
         val forcedBySocksRoot = SettingsManager.isRootMode()
                 || MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING)
 
-        val enableLocalProxy = forcedByHev || forcedBySocksRoot || MmkvManager.decodeSettingsBool(AppConfig.PREF_ENABLE_LOCAL_PROXY, true)
+        val enableLocalProxy = forcedBySocksRoot || MmkvManager.decodeSettingsBool(AppConfig.PREF_ENABLE_LOCAL_PROXY, true)
 
         val socksPort = SettingsManager.getSocksPort()
         val socksUsername = SettingsManager.getSocksUsername()
@@ -495,7 +499,7 @@ object CoreConfigManager {
             inbound1.settings?.auth = "noauth"
             inbound1.settings?.accounts = null
         }
-        val fakedns = MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED) == true
+        val fakedns = false
         val sniffAllTlsAndHttp =
             MmkvManager.decodeSettingsBool(AppConfig.PREF_SNIFFING_ENABLED, true) != false
         inbound1.sniffing?.enabled = fakedns || sniffAllTlsAndHttp
@@ -534,11 +538,40 @@ object CoreConfigManager {
      * Enable fake DNS when local DNS and fake DNS are both enabled.
      */
     private fun configureFakeDns(v2rayConfig: V2rayConfig) {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true) == true
-            && MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED) == true
-        ) {
-            v2rayConfig.fakedns = listOf(V2rayConfig.FakednsBean())
-        }
+        v2rayConfig.fakedns = null
+    }
+
+    private fun configureStunProxy(v2rayConfig: V2rayConfig, proxyBalancerTag: String?) {
+        applyStunProxy(v2rayConfig, proxyBalancerTag)
+    }
+
+    internal fun applyStunProxy(v2rayConfig: V2rayConfig, proxyBalancerTag: String? = null) {
+        fun proxyRule(
+            protocol: List<String>? = null,
+            domain: List<String>? = null,
+        ) = V2rayConfig.RoutingBean.RulesBean(
+            outboundTag = AppConfig.TAG_PROXY.takeIf { proxyBalancerTag == null },
+            balancerTag = proxyBalancerTag,
+            network = "udp",
+            protocol = protocol,
+            domain = domain,
+        )
+
+        v2rayConfig.routing.rules.add(
+            0,
+            proxyRule(protocol = arrayListOf("stun"))
+        )
+        v2rayConfig.routing.rules.add(
+            1,
+            proxyRule(domain = listOf(
+                "full:stun.l.google.com",
+                "full:stun1.l.google.com",
+                "full:stun2.l.google.com",
+                "full:stun3.l.google.com",
+                "full:stun4.l.google.com",
+                "full:stun.cloudflare.com",
+            ))
+        )
     }
 
     /**
@@ -587,44 +620,14 @@ object CoreConfigManager {
             return
         }
 
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED) == true) {
-            val geositeCn = arrayListOf(AppConfig.GEOSITE_CN)
-            val routingDomains = configContext.routingDomainRules
-                .asSequence()
-                .filter { it.outboundTag != AppConfig.TAG_BLOCKED }
-                .flatMap { it.domain.asSequence() }
-                .toList()
-                .distinct()
-            val finalDomain = geositeCn + routingDomains
-            // fakedns with all domains to make it always top priority
-            v2rayConfig.dns?.servers?.add(
-                0,
-                V2rayConfig.DnsBean.ServersBean(
-                    address = "fakedns",
-                    domains = finalDomain
+        if (SettingsManager.isVpnMode()) {
+            v2rayConfig.routing.rules.add(
+                0, V2rayConfig.RoutingBean.RulesBean(
+                    inboundTag = arrayListOf("tun"),
+                    outboundTag = "dns-out",
+                    port = "53",
                 )
             )
-        }
-
-        if (SettingsManager.isVpnMode()) {
-            if (SettingsManager.isUsingHevTun()) {
-                //hev-socks5-tunnel dns routing
-                v2rayConfig.routing.rules.add(
-                    0, V2rayConfig.RoutingBean.RulesBean(
-                        inboundTag = arrayListOf("socks"),
-                        outboundTag = "dns-out",
-                        port = "53",
-                    )
-                )
-            } else {
-                v2rayConfig.routing.rules.add(
-                    0, V2rayConfig.RoutingBean.RulesBean(
-                        inboundTag = arrayListOf("tun"),
-                        outboundTag = "dns-out",
-                        port = "53",
-                    )
-                )
-            }
         }
 
         // DNS outbound
@@ -643,7 +646,7 @@ object CoreConfigManager {
 
     /**
      * In the root mode the whole device's traffic (incl. raw DNS) is funneled
-     * into the core's SOCKS inbound, exactly like the VPN+hev path. Hijack port-53 to the
+     * into the core's SOCKS inbound. Hijack port-53 to the
      * core's DNS module so queries are resolved via the configured resolver through the
      * proxy instead of leaking to (or being mis-resolved by) the local network resolver.
      * Independent of the local-DNS toggle, which is not exposed for root mode.
@@ -1127,12 +1130,19 @@ object CoreConfigManager {
             MmkvManager.decodeSettingsString(AppConfig.PREF_ROUTING_DOMAIN_STRATEGY)
                 ?: "AsIs"
 
-        googleLocationBlockRule(
+        val blockGoogleLocation =
             MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)
+        geminiLiveProxyRule(blockGoogleLocation)?.let(v2rayConfig.routing.rules::add)
+        googleLocationBlockRule(blockGoogleLocation)?.let(v2rayConfig.routing.rules::add)
+        val blockGoogleMaps = MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)
+        googleMapsSharedSdkRule(
+            enabled = blockGoogleMaps,
+            strictBlock = MmkvManager.decodeSettingsBool(
+                AppConfig.PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+                AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+            ),
         )?.let(v2rayConfig.routing.rules::add)
-        googleMapsBlockRule(
-            MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)
-        )?.let(v2rayConfig.routing.rules::add)
+        googleMapsBlockRule(blockGoogleMaps)?.let(v2rayConfig.routing.rules::add)
 
         val rulesetItems = MmkvManager.decodeRoutingRulesets()
         rulesetItems?.forEach { key ->
@@ -1150,11 +1160,34 @@ object CoreConfigManager {
         )
     }
 
+    internal fun geminiLiveProxyRule(enabled: Boolean): V2rayConfig.RoutingBean.RulesBean? {
+        if (!enabled) return null
+        return V2rayConfig.RoutingBean.RulesBean(
+            domain = AppConfig.GEMINI_LIVE_DOMAINS,
+            outboundTag = AppConfig.TAG_PROXY,
+            port = "443",
+            network = "tcp,udp",
+        )
+    }
+
     internal fun googleMapsBlockRule(enabled: Boolean): V2rayConfig.RoutingBean.RulesBean? {
         if (!enabled) return null
         return V2rayConfig.RoutingBean.RulesBean(
             domain = AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS,
             outboundTag = AppConfig.TAG_BLOCKED,
+            port = "443",
+            network = "tcp,udp",
+        )
+    }
+
+    internal fun googleMapsSharedSdkRule(
+        enabled: Boolean,
+        strictBlock: Boolean = AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+    ): V2rayConfig.RoutingBean.RulesBean? {
+        if (!enabled) return null
+        return V2rayConfig.RoutingBean.RulesBean(
+            domain = AppConfig.GOOGLE_MAPS_SHARED_SDK_DOMAINS,
+            outboundTag = if (strictBlock) AppConfig.TAG_BLOCKED else AppConfig.TAG_PROXY,
             port = "443",
             network = "tcp,udp",
         )
@@ -1177,14 +1210,14 @@ object CoreConfigManager {
         val rule = JsonUtil.fromJson(JsonUtil.toJson(item), V2rayConfig.RoutingBean.RulesBean::class.java) ?: return
 
         // Replace specific geoip rules with ext versions
+        val compactGeoIpAvailable = File(
+            Utils.userAssetPath(context),
+            AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT,
+        ).isFile
         rule.ip?.let { ipList ->
             val updatedIpList = ArrayList<String>()
             ipList.forEach { ip ->
-                when (ip) {
-                    AppConfig.GEOIP_CN -> updatedIpList.add("ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:cn")
-                    AppConfig.GEOIP_PRIVATE -> updatedIpList.add("ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:private")
-                    else -> updatedIpList.add(ip)
-                }
+                updatedIpList.add(resolveGeoIpRule(ip, compactGeoIpAvailable))
             }
             rule.ip = updatedIpList
         }
@@ -1220,6 +1253,13 @@ object CoreConfigManager {
         }
 
         appendRuleWithNonProxiedUdpPolicy(rule, v2rayConfig)
+    }
+
+    internal fun resolveGeoIpRule(ip: String, compactGeoIpAvailable: Boolean): String = when {
+        !compactGeoIpAvailable -> ip
+        ip == AppConfig.GEOIP_CN -> "ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:cn"
+        ip == AppConfig.GEOIP_PRIVATE -> "ext:${AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT}:private"
+        else -> ip
     }
 
     private fun appendRuleWithNonProxiedUdpPolicy(

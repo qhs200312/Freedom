@@ -123,25 +123,36 @@ object HttpUtil {
      * @param httpPort The HTTP port to use.
      * @return The content of the URL as a string.
      */
-    fun getUrlContent(request: UrlContentRequest): String? {
+    fun getUrlContent(request: UrlContentRequest, onFailure: ((String) -> Unit)? = null): String? {
         val url = request.url ?: return null
-        val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
+        val client = buildOkHttpClient(
+            request.timeout,
+            request.httpPort,
+            request.socksPort,
+            request.proxyUsername,
+            request.proxyPassword,
+            followRedirects = true,
+        )
+        val boundedClient = client.newBuilder()
+            .callTimeout(request.callTimeout.toLong(), TimeUnit.MILLISECONDS).build()
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
             .header("Connection", "close")
-        if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+        if (request.httpPort != 0 && request.socksPort == 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
             requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
         }
         try {
-            client.newCall(requestBuilder.build()).execute().use { response ->
+            boundedClient.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful) {
+                    onFailure?.invoke("HTTP_${response.code}")
                     LogUtil.w(AppConfig.TAG, "Failed to get URL content, code=${response.code}")
                     return null
                 }
                 return response.body?.string()
             }
         } catch (e: Exception) {
+            onFailure?.invoke(e.javaClass.simpleName)
             LogUtil.e(AppConfig.TAG, "Failed to get URL content", e)
         }
         return null
@@ -164,7 +175,14 @@ object HttpUtil {
 
         while (redirects++ < maxRedirects) {
             if (currentUrl == null) continue
-            val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = false)
+            val client = buildOkHttpClient(
+                request.timeout,
+                request.httpPort,
+                request.socksPort,
+                request.proxyUsername,
+                request.proxyPassword,
+                followRedirects = false,
+            )
             val finalUserAgent = if (request.userAgent.isNullOrBlank()) {
                 "v2rayNG/${BuildConfig.VERSION_NAME}"
             } else {
@@ -188,7 +206,7 @@ object HttpUtil {
                 }
             }
 
-            if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+            if (request.httpPort != 0 && request.socksPort == 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
                 requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
             }
 
@@ -236,6 +254,7 @@ object HttpUtil {
     private fun buildOkHttpClient(
         timeout: Int,
         httpPort: Int,
+        socksPort: Int,
         proxyUsername: String?,
         proxyPassword: String?,
         followRedirects: Boolean
@@ -246,8 +265,21 @@ object HttpUtil {
             .followRedirects(followRedirects)
             .followSslRedirects(followRedirects)
 
-        if (httpPort != 0) {
-            builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(LOOPBACK, httpPort)))
+        if (socksPort != 0) {
+            if (requiresAuthenticatedSocksSocket(proxyUsername, proxyPassword)) {
+                builder.proxy(Proxy.NO_PROXY)
+                builder.socketFactory(Socks5SocketFactory(
+                    InetSocketAddress(LOOPBACK, socksPort), proxyUsername, proxyPassword, timeout,
+                ))
+                // Preserve the hostname for SOCKS5 remote resolution, even on IPv6-only local DNS.
+                builder.dns { host -> listOf(InetAddress.getByAddress(host, byteArrayOf(0, 0, 0, 0))) }
+            } else {
+                builder.proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress(LOOPBACK, socksPort)))
+            }
+        } else {
+            buildProxy(httpPort, socksPort)?.let(builder::proxy)
+        }
+        if (httpPort != 0 && socksPort == 0) {
             if (!proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
                 builder.proxyAuthenticator { _, response ->
                     if (response.request.header("Proxy-Authorization") != null) {
@@ -262,6 +294,28 @@ object HttpUtil {
         }
 
         return builder.build()
+    }
+
+    internal fun buildProxy(httpPort: Int, socksPort: Int): Proxy? = when {
+        socksPort != 0 -> Proxy(Proxy.Type.SOCKS, InetSocketAddress(LOOPBACK, socksPort))
+        httpPort != 0 -> Proxy(Proxy.Type.HTTP, InetSocketAddress(LOOPBACK, httpPort))
+        else -> null
+    }
+
+    internal fun requiresAuthenticatedSocksSocket(username: String?, password: String?): Boolean =
+        !username.isNullOrEmpty() && password != null
+
+    fun isUrlReachable(request: UrlContentRequest): Boolean {
+        val url = request.url ?: return false
+        return runCatching {
+            val client = buildOkHttpClient(
+                request.timeout, request.httpPort, request.socksPort,
+                request.proxyUsername, request.proxyPassword, followRedirects = false,
+            ).newBuilder().callTimeout(request.timeout.toLong(), TimeUnit.MILLISECONDS).build()
+            client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                response.code in 100..599
+            }
+        }.getOrDefault(false)
     }
 
     private fun resolveLocation(baseUrl: String, raw: String): String? {
@@ -288,7 +342,14 @@ object HttpUtil {
         targetFile: File
     ): Boolean {
         val url = request.url ?: return false
-        val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
+        val client = buildOkHttpClient(
+            request.timeout,
+            request.httpPort,
+            request.socksPort,
+            request.proxyUsername,
+            request.proxyPassword,
+            followRedirects = true,
+        )
         val requestBuilder = Request.Builder()
             .url(url)
             .get()

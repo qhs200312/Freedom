@@ -14,6 +14,7 @@ data class MainUiState(
     val selectedGroupId: String = "",
     val selectedGuid: String? = null,
     val isRunning: Boolean = false,
+    val isStarting: Boolean = false,
     val isTesting: Boolean = false,
     val proxyMode: ProxyMode = ProxyMode.STANDARD,
     val isCheckingRoot: Boolean = false,

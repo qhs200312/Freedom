@@ -19,6 +19,7 @@ mockitoMockitoInline = "5.2.0"
 camerax = "1.6.1"
 composeBom = "2026.06.01"
 reorderable = "3.1.0"
+backdrop = "2.0.1"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
@@ -39,6 +40,7 @@ lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", v
 org-mockito-mockito-inline = { module = "org.mockito:mockito-inline", version.ref = "mockitoMockitoInline" }
 mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockitoMockitoInline" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
+backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 
 # CameraX
 camerax-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }

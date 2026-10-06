@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.main
 
 import android.app.Activity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +44,8 @@ import com.v2ray.ang.ui.checkupdate.UpdateAvailableDialog
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.QRCodeDialog
 import com.v2ray.ang.util.Utils
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -72,6 +75,9 @@ fun MainScreen(
     val darkTheme = LocalDarkTheme.current
     var selectedDestinationIndex by rememberSaveable { mutableStateOf(MainDestination.Dashboard.ordinal) }
     val selectedDestination = MainDestination.values()[selectedDestinationIndex]
+    val navigationBackdrop = rememberLayerBackdrop {
+        drawContent()
+    }
 
     SideEffect {
         val activity = rootView.context as? Activity ?: return@SideEffect
@@ -223,10 +229,15 @@ fun MainScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                .layerBackdrop(navigationBackdrop),
         ) {
             when (selectedDestination) {
                 MainDestination.Dashboard -> {
@@ -357,6 +368,7 @@ fun MainScreen(
             onDestinationSelected = { destination ->
                 selectedDestinationIndex = destination.ordinal
             },
+            backdrop = navigationBackdrop,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }

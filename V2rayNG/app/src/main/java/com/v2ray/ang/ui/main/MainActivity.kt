@@ -1,9 +1,13 @@
 package com.v2ray.ang.ui.main
 
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.view.KeyEvent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -25,6 +29,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.root.RootManager
+import com.v2ray.ang.service.CoreWarmupService
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
@@ -54,6 +59,12 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : HelperBaseComponentActivity() {
 
+    private var coreProcessBound = false
+    private val coreProcessConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) = Unit
+        override fun onServiceDisconnected(name: ComponentName?) = Unit
+    }
+
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
     }
@@ -61,6 +72,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == RESULT_OK) startV2Ray()
+            else mainViewModel.setServiceStarting(false)
         }
 
     private val profileEditorLauncher =
@@ -95,7 +107,31 @@ class MainActivity : HelperBaseComponentActivity() {
         mainViewModel.onAction(MainAction.Initialize)
         mainViewModel.checkForUpdatesOnLaunch()
 
+        coreProcessBound = bindService(
+            Intent(this, CoreWarmupService::class.java),
+            coreProcessConnection,
+            Context.BIND_AUTO_CREATE,
+        )
+
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    override fun onDestroy() {
+        if (coreProcessBound) {
+            runCatching { unbindService(coreProcessConnection) }
+            coreProcessBound = false
+        }
+        super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mainViewModel.setDashboardVisible(true)
+    }
+
+    override fun onPause() {
+        mainViewModel.setDashboardVisible(false)
+        super.onPause()
     }
 
     @Composable
@@ -161,12 +197,16 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     private fun handleFabAction() {
-        if (mainViewModel.uiState.value.isRunning) {
+        val state = mainViewModel.uiState.value
+        if (state.isStarting) return
+        if (state.isRunning) {
             LauncherManager.stopService(this)
         } else if (!SettingsManager.isRootMode() && SettingsManager.isVpnMode()) {
+            mainViewModel.setServiceStarting(true)
             val intent = VpnService.prepare(this)
             if (intent == null) startV2Ray() else requestVpnPermission.launch(intent)
         } else {
+            mainViewModel.setServiceStarting(true)
             startV2Ray()
         }
     }
@@ -203,6 +243,7 @@ class MainActivity : HelperBaseComponentActivity() {
     private fun startV2Ray() {
         if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
             toast(R.string.title_file_chooser)
+            mainViewModel.setServiceStarting(false)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN &&
@@ -210,15 +251,15 @@ class MainActivity : HelperBaseComponentActivity() {
         ) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
-        LauncherManager.startService(this)
+        if (!LauncherManager.startService(this)) {
+            mainViewModel.setServiceStarting(false)
+        }
     }
 
     private fun restartV2Ray() {
-        if (mainViewModel.uiState.value.isRunning) LauncherManager.stopService(this)
-        lifecycleScope.launch {
-            kotlinx.coroutines.delay(500)
-            startV2Ray()
-        }
+        if (mainViewModel.uiState.value.isRunning) {
+            com.v2ray.ang.helper.MessageHelper.sendMsg2Service(this, AppConfig.MSG_STATE_RESTART, "")
+        } else startV2Ray()
     }
 
     private fun importManually(createConfigType: Int) {

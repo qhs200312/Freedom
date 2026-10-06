@@ -152,6 +152,7 @@ class MainRepository(
     override fun getString(resId: Int, vararg formatArgs: Any): String = app.getString(resId, *formatArgs)
 
     override fun getSubscriptions(): List<SubscriptionCache> {
+        val subscriptions = MmkvManager.decodeSubscriptions()
         if (isGroupAllDisplayEnabled()) {
             return listOf(
                 SubscriptionCache(
@@ -162,7 +163,7 @@ class MainRepository(
                 )
             )
         }
-        return MmkvManager.decodeSubscriptions()
+        return subscriptions
     }
 
     override fun getSubscriptionItem(id: String): SubscriptionItem? =
@@ -248,8 +249,11 @@ class MainRepository(
         sendMsg2Service(AppConfig.MSG_MEASURE_DELAY, "")
     }
 
-    override fun getIPLocation(useProxy: Boolean): GeoLocation? =
-        SpeedtestManager.getIPInfo(useProxy)
+    override fun getIPLocation(
+        useProxy: Boolean,
+        enrichLocation: Boolean,
+        knownLocation: GeoLocation?,
+    ): GeoLocation? = SpeedtestManager.getIPInfo(useProxy, enrichLocation, knownLocation)
 
     override fun syncSubscriptions() {
         SubscriptionUpdater.sync(app)

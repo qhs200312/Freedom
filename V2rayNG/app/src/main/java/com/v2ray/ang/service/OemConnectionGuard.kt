@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class OemConnectionGuard(
     context: Context,
+    private val shouldMonitor: () -> Boolean,
     private val isCoreRunning: () -> Boolean,
     private val hasUsableNetwork: () -> Boolean,
     private val isCoreReachable: () -> Boolean,
@@ -45,6 +46,12 @@ class OemConnectionGuard(
                 "xiaomi", "redmi", "poco",
             ).any(identity::contains)
         }
+
+        internal fun shouldRecover(
+            monitoringEnabled: Boolean,
+            coreRunning: Boolean,
+            coreReachable: Boolean,
+        ): Boolean = monitoringEnabled && (!coreRunning || !coreReachable)
     }
 
     private val appContext = context.applicationContext
@@ -96,7 +103,7 @@ class OemConnectionGuard(
     }
 
     private fun checkNow(reason: String) {
-        if (!isCoreRunning() || !hasUsableNetwork()) return
+        if (!shouldMonitor() || !hasUsableNetwork()) return
 
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastCheckAt < MIN_CHECK_GAP_MS) return
@@ -104,8 +111,10 @@ class OemConnectionGuard(
         lastCheckAt = now
 
         try {
-            if (isCoreReachable()) return
-            LogUtil.w(AppConfig.TAG, "ConnectionGuard: core is unreachable after $reason; reloading")
+            val coreRunning = isCoreRunning()
+            val coreReachable = coreRunning && isCoreReachable()
+            if (!shouldRecover(true, coreRunning, coreReachable)) return
+            LogUtil.w(AppConfig.TAG, "ConnectionGuard: core is stopped or unreachable after $reason; reloading")
             reloadCore()
         } catch (e: CancellationException) {
             throw e

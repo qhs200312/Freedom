@@ -232,12 +232,32 @@ object CoreConfigContextBuilder {
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)) {
             result.add(
                 CoreConfigContext.RoutingDomainRule(
+                    domain = AppConfig.GEMINI_LIVE_DOMAINS,
+                    outboundTag = AppConfig.TAG_PROXY,
+                )
+            )
+            result.add(
+                CoreConfigContext.RoutingDomainRule(
                     domain = AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS,
                     outboundTag = AppConfig.TAG_BLOCKED,
                 )
             )
         }
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)) {
+            val strictBlockSharedSdkEndpoints = MmkvManager.decodeSettingsBool(
+                AppConfig.PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+                AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+            )
+            result.add(
+                CoreConfigContext.RoutingDomainRule(
+                    domain = AppConfig.GOOGLE_MAPS_SHARED_SDK_DOMAINS,
+                    outboundTag = if (strictBlockSharedSdkEndpoints) {
+                        AppConfig.TAG_BLOCKED
+                    } else {
+                        AppConfig.TAG_PROXY
+                    },
+                )
+            )
             result.add(
                 CoreConfigContext.RoutingDomainRule(
                     domain = AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS,

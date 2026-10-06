@@ -1,7 +1,10 @@
 package com.v2ray.ang
 
 import android.app.Application
+import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
+import android.os.Process
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.tencent.mmkv.MMKV
@@ -35,6 +38,11 @@ class AngApplication : Application() {
 
         MMKV.initialize(this)
 
+        // This Application is created in every declared process. The VPN/core process only
+        // needs MMKV; repeating WorkManager setup, rule initialization and data migrations there
+        // delays the first connection and widens the system network handover window.
+        if (!isMainProcess()) return
+
         // Initialize WorkManager with the custom configuration
         WorkManager.initialize(this, workManagerConfiguration)
 
@@ -43,5 +51,17 @@ class AngApplication : Application() {
 
         // Initialize theme state from MMKV
         ThemeManager.refresh()
+    }
+
+    private fun isMainProcess(): Boolean {
+        val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            val manager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            manager?.runningAppProcesses
+                ?.firstOrNull { it.pid == Process.myPid() }
+                ?.processName
+        }
+        return processName == packageName
     }
 }

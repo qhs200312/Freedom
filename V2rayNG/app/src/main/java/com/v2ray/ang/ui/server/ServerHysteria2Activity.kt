@@ -98,4 +98,3 @@ class ServerHysteria2Activity : BaseServerActivity() {
         )
     }
 }
-

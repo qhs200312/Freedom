@@ -31,6 +31,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.VPN
 import com.v2ray.ang.R
+import com.v2ray.ang.core.CoreSelector
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
 import com.v2ray.ang.handler.SettingsChangeManager
@@ -169,7 +171,6 @@ fun SettingsScreen(
     var modeSettingsExpanded by rememberSaveable { mutableStateOf(false) }
 
     var localDns by rememberMmkvBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true)
-    var fakeDns by rememberMmkvBool(AppConfig.PREF_FAKE_DNS_ENABLED, false)
     var appendHttpProxy by rememberMmkvBool(AppConfig.PREF_APPEND_HTTP_PROXY, false)
     var vpnDns by rememberMmkvString(AppConfig.PREF_VPN_DNS, "")
     var vpnBypassLan by rememberMmkvString(AppConfig.PREF_VPN_BYPASS_LAN, "0")
@@ -194,10 +195,6 @@ fun SettingsScreen(
     var mode by rememberMmkvString(AppConfig.PREF_MODE, VPN)
     var enableRootMode by rememberMmkvBool(AppConfig.PREF_ROOT_MODE_ENABLE, false)
     var lanSharing by rememberMmkvBool(AppConfig.PREF_ROOT_LAN_SHARING, false)
-
-    var hevTunLogLevel by rememberMmkvString(AppConfig.PREF_HEV_TUNNEL_LOGLEVEL, "warning")
-    var hevTunRwTimeout by rememberMmkvString(AppConfig.PREF_HEV_TUNNEL_RW_TIMEOUT, "")
-    var useHevTun by rememberMmkvBool(AppConfig.PREF_USE_HEV_TUNNEL, true)
 
     var enableLocalProxy by rememberMmkvBool(AppConfig.PREF_ENABLE_LOCAL_PROXY, true)
     var socksPort by rememberMmkvString(AppConfig.PREF_SOCKS_PORT, "")
@@ -224,6 +221,10 @@ fun SettingsScreen(
         AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES,
         true,
     )
+    var strictBlockGoogleMapsSdkEndpoints by rememberMmkvBool(
+        AppConfig.PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+        AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+    )
     var autoDisableLocationWithProxy by rememberMmkvBool(
         AppConfig.PREF_AUTO_DISABLE_LOCATION_WITH_PROXY,
         false,
@@ -234,6 +235,14 @@ fun SettingsScreen(
     var domesticDns by rememberMmkvString(AppConfig.PREF_DOMESTIC_DNS, "")
     var dnsHosts by rememberMmkvString(AppConfig.PREF_DNS_HOSTS, "")
     var coreLogLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
+    var vmessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VMESS)!!, "XRAY")
+    var vlessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VLESS)!!, "XRAY")
+    var trojanDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.TROJAN)!!, "XRAY")
+    var shadowsocksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SHADOWSOCKS)!!, "XRAY")
+    var socksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SOCKS)!!, "XRAY")
+    var httpDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HTTP)!!, "XRAY")
+    var wireGuardDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.WIREGUARD)!!, "XRAY")
+    var hy2DefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HYSTERIA2)!!, "SING_BOX")
     var outboundResolveMethod by rememberMmkvString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "0")
 
     var isBooted by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
@@ -246,9 +255,7 @@ fun SettingsScreen(
     var ipApiUrl by rememberMmkvString(AppConfig.PREF_IP_API_URL, "")
 
     val isVpn = mode == VPN
-    val hevTunEnabled = isVpn && useHevTun
-    val localProxyForced = hevTunEnabled
-    val effectiveLocalProxy = enableLocalProxy || localProxyForced
+    val effectiveLocalProxy = enableLocalProxy
 
     val languageEntries = stringArrayResource(R.array.language_select).toList()
     val languageValues = stringArrayResource(R.array.language_select_value).toList()
@@ -258,10 +265,14 @@ fun SettingsScreen(
     val bypassLanValues = stringArrayResource(R.array.vpn_bypass_lan_value).toList()
     val interfaceAddrEntries = stringArrayResource(R.array.vpn_interface_address).toList()
     val interfaceAddrValues = stringArrayResource(R.array.vpn_interface_address_value).toList()
-    val hevLogEntries = stringArrayResource(R.array.hev_tunnel_loglevel).toList()
-    val hevLogValues = stringArrayResource(R.array.hev_tunnel_loglevel).toList()
     val coreLogLevelEntries = stringArrayResource(R.array.core_loglevel).toList()
     val coreLogLevelValues = stringArrayResource(R.array.core_loglevel).toList()
+    val coreEntries = listOf(
+        stringResource(R.string.core_preference_auto),
+        "sing-box",
+        "Xray",
+    )
+    val coreValues = listOf("AUTO", "SING_BOX", "XRAY")
     val outboundResolveEntries = stringArrayResource(R.array.outbound_domain_resolve_method).toList()
     val outboundResolveValues = stringArrayResource(R.array.outbound_domain_resolve_method_value).toList()
     val fragmentPacketsEntries = stringArrayResource(R.array.fragment_packets).toList()
@@ -368,13 +379,6 @@ fun SettingsScreen(
                     enabled = isVpn,
                     onCheckedChange = { localDns = it }
                 )
-                SettingsSwitchItem(
-                    title = stringResource(R.string.title_pref_fake_dns_enabled),
-                    summary = stringResource(R.string.summary_pref_fake_dns_enabled),
-                    checked = fakeDns,
-                    enabled = isVpn && localDns,
-                    onCheckedChange = { fakeDns = it }
-                )
                 SettingsEditItem(
                     title = stringResource(R.string.title_pref_vpn_dns),
                     value = vpnDns,
@@ -411,33 +415,6 @@ fun SettingsScreen(
                     keyboardNumber = true,
                     onValueChanged = { vpnMtu = it }
                 )
-                SettingsSwitchItem(
-                    title = stringResource(R.string.title_pref_use_hev_tunnel),
-                    summary = stringResource(R.string.summary_pref_use_hev_tunnel),
-                    checked = useHevTun,
-                    enabled = isVpn,
-                    onCheckedChange = {
-                        useHevTun = it
-                        if (it && !enableLocalProxy) {
-                            enableLocalProxy = true
-                        }
-                    }
-                )
-                SettingsListItem(
-                    title = stringResource(R.string.title_pref_hev_tunnel_loglevel),
-                    entries = hevLogEntries,
-                    values = hevLogValues,
-                    selectedValue = hevTunLogLevel,
-                    enabled = hevTunEnabled,
-                    onSelected = { hevTunLogLevel = it }
-                )
-                SettingsEditItem(
-                    title = stringResource(R.string.title_pref_hev_tunnel_rw_timeout),
-                    value = hevTunRwTimeout,
-                    enabled = hevTunEnabled,
-                    keyboardNumber = true,
-                    onValueChanged = { hevTunRwTimeout = it }
-                )
             }
 
             CollapsiblePreferenceGroupHeader(
@@ -459,6 +436,13 @@ fun SettingsScreen(
                     onCheckedChange = { blockGoogleMapsServices = it },
                 )
                 SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_strict_block_google_maps_sdk_endpoints),
+                    summary = stringResource(R.string.summary_pref_strict_block_google_maps_sdk_endpoints),
+                    checked = strictBlockGoogleMapsSdkEndpoints,
+                    enabled = blockGoogleMapsServices,
+                    onCheckedChange = { strictBlockGoogleMapsSdkEndpoints = it },
+                )
+                SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_auto_disable_location_with_proxy),
                     summary = stringResource(R.string.summary_pref_auto_disable_location_with_proxy),
                     checked = autoDisableLocationWithProxy,
@@ -472,6 +456,62 @@ fun SettingsScreen(
                 onExpandedChange = { coreSettingsExpanded = it }
             )
             if (coreSettingsExpanded) {
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "VMess"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = vmessDefaultCore,
+                    onSelected = { vmessDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "VLESS"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = vlessDefaultCore,
+                    onSelected = { vlessDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "Trojan"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = trojanDefaultCore,
+                    onSelected = { trojanDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "Shadowsocks"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = shadowsocksDefaultCore,
+                    onSelected = { shadowsocksDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "SOCKS"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = socksDefaultCore,
+                    onSelected = { socksDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "HTTP"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = httpDefaultCore,
+                    onSelected = { httpDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "WireGuard"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = wireGuardDefaultCore,
+                    onSelected = { wireGuardDefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "Hysteria2"),
+                    entries = coreEntries,
+                    values = coreValues,
+                    selectedValue = hy2DefaultCore,
+                    onSelected = { hy2DefaultCore = it }
+                )
                 SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_sniffing_enabled),
                     summary = stringResource(R.string.summary_pref_sniffing_enabled),
@@ -488,13 +528,10 @@ fun SettingsScreen(
                     title = stringResource(R.string.title_pref_enable_local_proxy),
                     summary = stringResource(R.string.summary_pref_enable_local_proxy),
                     checked = enableLocalProxy,
-                    enabled = !localProxyForced,
                     onCheckedChange = {
-                        if (!localProxyForced) {
-                            enableLocalProxy = it
-                            if (!it && appendHttpProxy) {
-                                appendHttpProxy = false
-                            }
+                        enableLocalProxy = it
+                        if (!it && appendHttpProxy) {
+                            appendHttpProxy = false
                         }
                     }
                 )

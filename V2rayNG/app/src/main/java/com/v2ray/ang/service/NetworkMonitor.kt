@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  * is still connected, so the socket to the server is never reset and the core keeps using a dead
  * connection. Deciding that a handover happened is what this class is for, acting on it is not.
  *
- * Only used from Android P and above, see CoreServiceManager.startNetworkMonitor().
+ * Used by XrayRuntime from Android P onward. sing-box owns its interface monitor.
  * [onHandover] is invoked on a background thread after the debounce window and may block.
  */
 class NetworkMonitor(
@@ -28,15 +28,21 @@ class NetworkMonitor(
     private val onUnderlyingNetworksChanged: (Array<Network>?) -> Unit,
     private val onHandover: () -> Unit,
 ) {
-    private companion object {
+    internal companion object {
         const val HANDOVER_DEBOUNCE_MS = 1000L
+
+        internal fun isEligibleUpstream(
+            isVpn: Boolean,
+            hasInternet: Boolean,
+            isValidated: Boolean,
+        ): Boolean = !isVpn && hasInternet && isValidated
     }
 
     @Volatile
     private var upstream: Network? = null
     private var hasObservedNetwork = false
     private var handoverJob: Job? = null
-    private var registered = false
+    @Volatile private var registered = false
 
     /**
      * Unfortunately registerDefaultNetworkCallback is going to return our VPN interface:
@@ -52,11 +58,28 @@ class NetworkMonitor(
         NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .build()
     }
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            if (!registered) return
+            if (!isPhysicalUpstream(network)) return
+            acceptUpstream(network)
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            if (!registered) return
+            if (!isPhysicalUpstream(networkCapabilities)) return
+            if (network != upstream) {
+                acceptUpstream(network)
+            } else {
+                onUnderlyingNetworksChanged(arrayOf(network))
+            }
+        }
+
+        private fun acceptUpstream(network: Network) {
             val previous = upstream
             val shouldReload = hasObservedNetwork && (previous == null || previous != network)
             upstream = network
@@ -67,13 +90,8 @@ class NetworkMonitor(
             }
         }
 
-        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-            if (network == upstream) {
-                onUnderlyingNetworksChanged(arrayOf(network))
-            }
-        }
-
         override fun onLost(network: Network) {
+            if (!registered) return
             // During make-before-break handover Android reports the old network as lost after
             // the replacement is already active. Do not clear the newly selected upstream.
             if (network != upstream) return
@@ -88,9 +106,10 @@ class NetworkMonitor(
     fun register() {
         if (registered) return
         try {
-            connectivity.requestNetwork(request, callback)
             registered = true
+            connectivity.requestNetwork(request, callback)
         } catch (e: Exception) {
+            registered = false
             LogUtil.e(AppConfig.TAG, "NetworkMonitor: Failed to request network", e)
         }
     }
@@ -114,13 +133,24 @@ class NetworkMonitor(
 
     fun hasAvailableNetwork(): Boolean = upstream != null
 
+    private fun isPhysicalUpstream(network: Network): Boolean {
+        val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+        return isPhysicalUpstream(capabilities)
+    }
+
+    private fun isPhysicalUpstream(capabilities: NetworkCapabilities): Boolean = isEligibleUpstream(
+        isVpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
+        hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
+        isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+    )
+
     private fun scheduleHandover(network: Network) {
         LogUtil.i(AppConfig.TAG, "NetworkMonitor: Upstream is now $network")
         handoverJob?.cancel()
         handoverJob = CoroutineScope(Dispatchers.IO).launch {
             try {
                 delay(HANDOVER_DEBOUNCE_MS)
-                onHandover()
+                if (registered && upstream == network) onHandover()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

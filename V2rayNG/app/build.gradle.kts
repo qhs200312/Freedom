@@ -22,8 +22,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 24
         targetSdk = 37
-        versionCode = 755
-        versionName = "2.4.0"
+        versionCode = 782
+        versionName = "2.6.1"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -159,7 +159,7 @@ android {
 
 dependencies {
     // Core Libraries
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+    implementation(files("libs/libcores.aar"))
 
     // AndroidX Core Libraries
     implementation(libs.androidx.core.ktx)
@@ -174,6 +174,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.backdrop)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 

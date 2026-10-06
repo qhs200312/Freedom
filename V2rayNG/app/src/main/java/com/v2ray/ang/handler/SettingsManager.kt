@@ -12,6 +12,7 @@ import com.v2ray.ang.AppConfig.GEOSITE_PRIVATE
 import com.v2ray.ang.AppConfig.TAG_DIRECT
 import com.v2ray.ang.AppConfig.VPN
 import com.v2ray.ang.dto.V2rayConfig
+import com.v2ray.ang.core.CoreSelector
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.dto.entities.SubscriptionItem
@@ -33,21 +34,29 @@ import com.v2ray.ang.util.Utils
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
-import kotlin.random.Random
 
 object SettingsManager {
 
-    @Volatile
-    private var runtimeSocksPort: Int? = null
+    private const val KEY_RUNTIME_SOCKS_PORT = "runtime_socks_port"
 
     fun initApp(context: Context) {
         ensureDefaultSettings()
         //ensureDefaultSubscription()
         initRoutingRulesets(context)
         migrateGoogleProxyRules()
+        migrateChinaDirectRules()
         removeUdp443BlockingRules()
         migrateServerListToSubscriptions()
         migrateHysteria2PinSHA256()
+        disableUnstableFakeDns()
+        CoreProfileMigration.run()
+    }
+
+    private fun disableUnstableFakeDns() {
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_FAKE_DNS_ENABLED, false)) {
+            MmkvManager.encodeSettings(AppConfig.PREF_FAKE_DNS_ENABLED, false)
+            LogUtil.i(AppConfig.TAG, "FakeDNS disabled for compatibility")
+        }
     }
 
     /**
@@ -108,6 +117,54 @@ object SettingsManager {
 
         return changed
     }
+
+    private fun migrateChinaDirectRules() {
+        val rulesets = MmkvManager.decodeRoutingRulesets() ?: return
+        if (ensureChinaDirectCoverage(rulesets)) {
+            MmkvManager.encodeRoutingRulesets(rulesets)
+            LogUtil.i(AppConfig.TAG, "Added missing China direct-routing rules")
+        }
+    }
+
+    internal fun ensureChinaDirectCoverage(rulesets: MutableList<RulesetItem>): Boolean {
+        val hasChinaIpRule = rulesets.any { rule ->
+            rule.ip.orEmpty().any { it.equals(AppConfig.GEOIP_CN, ignoreCase = true) }
+        }
+        val hasChinaDomainRule = rulesets.any { rule ->
+            rule.domain.orEmpty().any { it.equals(AppConfig.GEOSITE_CN, ignoreCase = true) }
+        }
+        if (hasChinaIpRule && hasChinaDomainRule) return false
+
+        val insertionIndex = rulesets.indexOfFirst(::isCatchAllRoutingRule)
+            .takeIf { it >= 0 }
+            ?: rulesets.size
+        val additions = buildList {
+            if (!hasChinaIpRule) {
+                add(RulesetItem(
+                    remarks = "绕过中国 IP",
+                    ip = listOf(AppConfig.GEOIP_CN),
+                    outboundTag = AppConfig.TAG_DIRECT,
+                ))
+            }
+            if (!hasChinaDomainRule) {
+                add(RulesetItem(
+                    remarks = "绕过中国域名",
+                    domain = listOf(AppConfig.GEOSITE_CN),
+                    outboundTag = AppConfig.TAG_DIRECT,
+                ))
+            }
+        }
+        rulesets.addAll(insertionIndex, additions)
+        return additions.isNotEmpty()
+    }
+
+    private fun isCatchAllRoutingRule(rule: RulesetItem): Boolean =
+        rule.domain.isNullOrEmpty() &&
+            rule.ip.isNullOrEmpty() &&
+            rule.process.isNullOrEmpty() &&
+            rule.protocol.isNullOrEmpty() &&
+            rule.network.isNullOrBlank() &&
+            (rule.port.isNullOrBlank() || rule.port == "0-65535")
 
     private fun removeUdp443BlockingRules() {
         val rulesets = MmkvManager.decodeRoutingRulesets() ?: return
@@ -338,18 +395,20 @@ object SettingsManager {
     fun getSocksPort(): Int {
         val port =
             if (IsDynamicSocksPort()) {
-                runtimeSocksPort ?: refreshRuntimeSocksPort()
+                MmkvManager.decodeSettingsString(KEY_RUNTIME_SOCKS_PORT)?.toIntOrNull()
+                    ?.takeIf { it in 1..65535 } ?: AppConfig.PORT_SOCKS.toInt()
             } else {
                 Utils.parseInt(MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT), AppConfig.PORT_SOCKS.toInt())
             }
-        return port ?: AppConfig.PORT_SOCKS.toInt()
+        return port
     }
 
     @Synchronized
     fun refreshRuntimeSocksPort(): Int? {
         if (IsDynamicSocksPort()) {
-            runtimeSocksPort = generateRandomSocksPort()
-            return runtimeSocksPort
+            val port = generateRandomSocksPort()
+            MmkvManager.encodeSettings(KEY_RUNTIME_SOCKS_PORT, port.toString())
+            return port
         }
         return null
     }
@@ -375,7 +434,7 @@ object SettingsManager {
     }
 
     private fun generateRandomSocksPort(): Int {
-        return Random.nextInt(10000, 65535)
+        return Utils.findRandomFreePort()
     }
 
     /**
@@ -387,10 +446,18 @@ object SettingsManager {
         val extFolder = Utils.userAssetPath(context)
 
         try {
-            val geo = arrayOf(AppConfig.GEOSITE_DAT, AppConfig.GEOIP_DAT, AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT)
+            val geo = arrayOf(
+                AppConfig.GEOSITE_DAT,
+                AppConfig.GEOIP_DAT,
+                AppConfig.GEOIP_ONLY_CN_PRIVATE_DAT,
+                AppConfig.SING_GEOIP_CN_SRS,
+                AppConfig.SING_GEOSITE_CN_SRS,
+            )
             assets.list("")
                 ?.filter { geo.contains(it) }
-                ?.filter { !File(extFolder, it).exists() }
+                ?.filter {
+                    it.endsWith(".srs") || !File(extFolder, it).exists()
+                }
                 ?.forEach {
                     val target = File(extFolder, it)
                     assets.open(it).use { input ->
@@ -451,8 +518,7 @@ object SettingsManager {
         return if (second) {
             AppConfig.DELAY_TEST_URL2
         } else {
-            MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL)
-                ?: AppConfig.DELAY_TEST_URL
+            normalizeDelayTestUrl(MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL))
         }
     }
 
@@ -508,14 +574,6 @@ object SettingsManager {
         return Utils.parseInt(MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_MTU), AppConfig.VPN_MTU)
     }
 
-    /**
-     * Check if HEV TUN is being used.
-     * @return True if HEV TUN is used, false otherwise.
-     */
-    fun isUsingHevTun(): Boolean {
-        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true)
-    }
-
     fun isOemConnectionGuardEnabled(): Boolean {
         return MmkvManager.decodeSettingsBool(AppConfig.PREF_OEM_CONNECTION_GUARD, true)
     }
@@ -560,11 +618,6 @@ object SettingsManager {
             return false
         }
 
-        // Must xray tun
-        if (isUsingHevTun()) {
-            return false
-        }
-
         // Must have route only enabled
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false) == false) {
             return false
@@ -585,8 +638,17 @@ object SettingsManager {
         ensureDefaultValue(AppConfig.PREF_SOCKS_PORT, AppConfig.PORT_SOCKS)
         ensureDefaultValue(AppConfig.PREF_REMOTE_DNS, AppConfig.DNS_PROXY)
         ensureDefaultValue(AppConfig.PREF_DOMESTIC_DNS, AppConfig.DNS_DIRECT)
+        CoreSelector.configurableProtocols.forEach { protocol ->
+            CoreSelector.preferenceKey(protocol)?.let { key ->
+                ensureDefaultValue(key, CoreSelector.builtInDefault(protocol).name)
+            }
+        }
         ensureDefaultValue(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)
         ensureDefaultValue(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true)
+        ensureDefaultValue(
+            AppConfig.PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+            AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
+        )
         ensureDefaultValue(AppConfig.PREF_OEM_CONNECTION_GUARD, true)
         ensureDefaultDelayTestUrl()
         ensureDefaultValue(AppConfig.PREF_IP_API_URL, AppConfig.IP_API_URL)
@@ -617,9 +679,19 @@ object SettingsManager {
 
     private fun ensureDefaultDelayTestUrl() {
         val current = MmkvManager.decodeSettingsString(AppConfig.PREF_DELAY_TEST_URL)
-        if (current.isNullOrEmpty() || current == AppConfig.LEGACY_DELAY_TEST_URL) {
-            MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, AppConfig.DELAY_TEST_URL)
+        val normalized = normalizeDelayTestUrl(current)
+        if (current != normalized) {
+            MmkvManager.encodeSettings(AppConfig.PREF_DELAY_TEST_URL, normalized)
         }
+    }
+
+    internal fun normalizeDelayTestUrl(url: String?): String {
+        if (url.isNullOrBlank()) return AppConfig.DELAY_TEST_URL
+        val host = runCatching { java.net.URI(url.trim()).host?.lowercase(Locale.ROOT) }.getOrNull()
+        return if (host != null && listOf("google.com", "gstatic.com").any {
+                host == it || host.endsWith(".$it")
+            }
+        ) AppConfig.DELAY_TEST_URL else url
     }
 
     private fun migrateHysteria2PinSHA256() {

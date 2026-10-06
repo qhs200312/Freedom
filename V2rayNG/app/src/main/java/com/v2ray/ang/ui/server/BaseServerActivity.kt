@@ -33,6 +33,7 @@ import com.v2ray.ang.AppConfig.REALITY
 import com.v2ray.ang.AppConfig.TLS
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.core.CoreSelector
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.extension.toast
@@ -122,6 +123,14 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                     state.port,
                     { state.port = it },
                     keyboardType = KeyboardType.Number
+                )
+            }
+            if (state.configType in CoreSelector.configurableProtocols) {
+                FormDropdownField(
+                    stringResource(R.string.server_lab_preferred_core),
+                    state.preferredCore,
+                    listOf("AUTO", "XRAY", "SING_BOX"),
+                    { state.preferredCore = it }
                 )
             }
         }

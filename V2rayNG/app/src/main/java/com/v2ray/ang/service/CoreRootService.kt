@@ -19,8 +19,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.lang.ref.SoftReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Foreground service for the root (system-wide) run modes. Unlike [CoreVpnService] it
@@ -34,6 +34,9 @@ import java.lang.ref.SoftReference
 class CoreRootService : Service(), ServiceControl {
 
     private var setupJob: Job? = null
+    private val stopping = AtomicBoolean(false)
+    private val teardownStarted = AtomicBoolean(false)
+    override fun isStopRequested(): Boolean = stopping.get()
 
     override fun onCreate() {
         super.onCreate()
@@ -42,11 +45,12 @@ class CoreRootService : Service(), ServiceControl {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        NotificationManager.ensureForeground()
+        NotificationManager.ensureForeground(this)
         LogUtil.i(AppConfig.TAG, "StartCore-Root: command received")
 
         // Foreground-service intents can be delivered twice (rapid taps, sticky restarts). A
         // duplicate is not a core startup failure and must not tear down a healthy root tunnel.
+        if (stopping.get()) return START_NOT_STICKY
         if (CoreServiceManager.isRunning() || setupJob?.isActive == true) {
             LogUtil.i(AppConfig.TAG, "StartCore-Root: duplicate start ignored")
             return START_STICKY
@@ -54,17 +58,23 @@ class CoreRootService : Service(), ServiceControl {
 
         // Start the in-process core first (this also posts the foreground notification),
         // then install the root routing off the main thread.
-        if (!CoreServiceManager.startCoreLoop(null, notifyStartSuccess = false)) {
-            LogUtil.e(AppConfig.TAG, "StartCore-Root: core failed to start")
-            stopService()
-            return START_NOT_STICKY
-        }
-
         setupJob = CoroutineScope(Dispatchers.IO).launch {
             // A killed root-service process or an APK update can leave its root helper and
             // policy rules alive. Remove that stale data path before probing the new core;
             // otherwise the probe period itself can leave the whole device offline.
             RootProxyManager.stop(this@CoreRootService)
+            if (stopping.get()) return@launch
+            SettingsManager.refreshRuntimeSocksPort()
+            try {
+                if (!CoreServiceManager.startCoreLoop(null, notifyStartSuccess = false)) {
+                    stopAfterBackgroundFailure()
+                    return@launch
+                }
+            } catch (error: Exception) {
+                LogUtil.e(AppConfig.TAG, "Root core startup failed", error)
+                stopAfterBackgroundFailure()
+                return@launch
+            }
 
             var coreReady = false
             for (attempt in 1..2) {
@@ -96,7 +106,7 @@ class CoreRootService : Service(), ServiceControl {
                 LogUtil.w(AppConfig.TAG, "StartCore-Root: root setup attempt $attempt failed")
             }
 
-            if (started) {
+            if (started && !stopping.get() && CoreServiceManager.markDataPathReady(this@CoreRootService)) {
                 MessageHelper.sendMsg2UI(
                     this@CoreRootService,
                     AppConfig.MSG_STATE_START_SUCCESS,
@@ -119,25 +129,25 @@ class CoreRootService : Service(), ServiceControl {
     }
 
     override fun onDestroy() {
-        // Wait for any in-flight async setup to finish before tearing down. The rules are
-        // installed off the main thread and can take seconds (the setup script waits for the
-        // tun to appear); if a stop arrives during that window, teardown would run first and
-        // the setup would then re-install the rules + tun pointing at a now-dead core,
-        // blackholing all traffic until the next start/stop cycle clears it.
-        runBlocking { setupJob?.cancelAndJoin() }
-        // Remove routing rules BEFORE stopping the core so traffic is never redirected
-        // to a dead listener. Synchronous on purpose — leaving rules behind breaks the net.
-        RootProxyManager.stop(this)
-        CoreServiceManager.stopCoreLoop(this)
+        stopService()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (isTransientShortcutTask(rootIntent)) {
+            LogUtil.i(AppConfig.TAG, "StartCore-Root: Ignoring shortcut task removal")
+            super.onTaskRemoved(rootIntent)
+            return
+        }
+        LogUtil.i(AppConfig.TAG, "StartCore-Root: App task removed, stopping service")
+        stopService()
+        super.onTaskRemoved(rootIntent)
     }
 
     /** Avoid waiting for the currently executing setup job from onDestroy(). */
     private fun stopAfterBackgroundFailure() {
-        RootProxyManager.stop(this)
-        CoreServiceManager.stopCoreLoop(this)
         setupJob = null
-        stopSelf()
+        stopService()
     }
 
     override fun getService(): Service = this
@@ -147,7 +157,16 @@ class CoreRootService : Service(), ServiceControl {
     }
 
     override fun stopService() {
-        stopSelf()
+        stopping.set(true)
+        if (!teardownStarted.compareAndSet(false, true)) return
+        val setup = setupJob
+        setup?.cancel()
+        CoroutineScope(Dispatchers.IO).launch {
+            // Wait off the main thread, then remove redirection before closing the core.
+            setup?.cancelAndJoin()
+            RootProxyManager.stop(this@CoreRootService)
+            CoreServiceManager.stopCoreLoop(this@CoreRootService) { stopSelf() }
+        }
     }
 
     override fun vpnProtect(socket: Int): Boolean = true

@@ -22,4 +22,12 @@ class OemConnectionGuardTest {
         assertFalse(OemConnectionGuard.isSupportedVendor("Samsung", "Galaxy"))
         assertFalse(OemConnectionGuard.isSupportedVendor(null, null))
     }
+
+    @Test
+    fun recoversOnlyAfterAReadyServiceLosesItsCoreOrConnectivity() {
+        assertFalse(OemConnectionGuard.shouldRecover(false, coreRunning = false, coreReachable = false))
+        assertFalse(OemConnectionGuard.shouldRecover(true, coreRunning = true, coreReachable = true))
+        assertTrue(OemConnectionGuard.shouldRecover(true, coreRunning = false, coreReachable = false))
+        assertTrue(OemConnectionGuard.shouldRecover(true, coreRunning = true, coreReachable = false))
+    }
 }

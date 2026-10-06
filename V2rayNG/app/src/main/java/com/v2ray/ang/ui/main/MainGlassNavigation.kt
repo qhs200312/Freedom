@@ -2,7 +2,6 @@ package com.v2ray.ang.ui.main
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -44,15 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -65,11 +63,18 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.v2ray.ang.R
 import com.v2ray.ang.ui.compose.LocalDarkTheme
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -87,11 +92,13 @@ internal val MainNavigationContentClearance = 84.dp
 private val NavigationShape = RoundedCornerShape(percent = 50)
 private val IndicatorShape = RoundedCornerShape(percent = 50)
 private val NavigationBackgroundHorizontalInset = 20.dp
+private val IndicatorEdgeInset = 4.dp
 
 @Composable
 internal fun MainBottomNavigation(
     selectedDestination: MainDestination,
     onDestinationSelected: (MainDestination) -> Unit,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
 ) {
     val destinations = MainDestination.entries
@@ -99,34 +106,17 @@ internal fun MainBottomNavigation(
     val darkTheme = LocalDarkTheme.current
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
+    val navigationItemsBackdrop = rememberLayerBackdrop()
 
     var isDragging by remember { mutableStateOf(false) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
     var dragVelocityPxPerSecond by remember { mutableFloatStateOf(0f) }
     var lastDragEventNanos by remember { mutableLongStateOf(0L) }
     var pressedIndex by remember { mutableIntStateOf(-1) }
-    var isLongPressed by remember { mutableStateOf(false) }
-
-    val containerScale by animateFloatAsState(
-        targetValue = when {
-            isLongPressed -> 1.045f
-            pressedIndex >= 0 -> 1.025f
-            else -> 1f
-        },
-        animationSpec = spring(dampingRatio = 0.38f, stiffness = 640f),
-        label = "bottomNavigationScale",
-    )
-    val glassBackground = Brush.verticalGradient(
-        colors = if (darkTheme) {
-            listOf(Color(0xF035373B), Color(0xEA24262A))
-        } else {
-            listOf(Color(0xF5FFFFFF), Color(0xE8EDF1F2))
-        },
-    )
     val glassBorder = Brush.verticalGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (darkTheme) 0.34f else 0.96f),
-            MaterialTheme.colorScheme.outline.copy(alpha = if (darkTheme) 0.30f else 0.18f),
+            Color.White.copy(alpha = if (darkTheme) 0.24f else 0.62f),
+            MaterialTheme.colorScheme.outline.copy(alpha = if (darkTheme) 0.22f else 0.14f),
         ),
     )
 
@@ -139,11 +129,7 @@ internal fun MainBottomNavigation(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp)
-                .graphicsLayer {
-                    scaleX = containerScale
-                    scaleY = containerScale
-                },
+                .height(58.dp),
         ) {
             Surface(
                 modifier = Modifier
@@ -151,27 +137,37 @@ internal fun MainBottomNavigation(
                     .fillMaxSize(),
                 shape = NavigationShape,
                 color = Color.Transparent,
-                shadowElevation = 14.dp,
+                shadowElevation = 0.dp,
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(NavigationShape)
-                        .background(glassBackground)
+                        .drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { NavigationShape },
+                            effects = {
+                                vibrancy()
+                                blur(6.dp.toPx())
+                                lens(10.dp.toPx(), 16.dp.toPx())
+                            },
+                            onDrawSurface = { },
+                        )
                         .border(1.dp, glassBorder, NavigationShape),
                 )
             }
 
             BoxWithConstraints(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .padding(horizontal = NavigationBackgroundHorizontalInset)
+                    .fillMaxSize(),
             ) {
                 val itemWidth = maxWidth / destinations.size
                 val itemWidthPx = with(density) { itemWidth.toPx() }
-                val indicatorHorizontalInset = NavigationBackgroundHorizontalInset
+                val indicatorHorizontalInset = IndicatorEdgeInset
                 val indicatorWidth = (itemWidth - indicatorHorizontalInset * 2f)
                     .coerceAtLeast(72.dp)
                 val indicatorWidthPx = with(density) { indicatorWidth.toPx() }
-                val navigationWidthPx = itemWidthPx * destinations.size
                 val maxDragOffsetPx = itemWidthPx * destinations.lastIndex
                 val restingOffsetPx = selectedIndex * itemWidthPx
                 val animatedIndicatorOffset = remember(itemWidthPx) {
@@ -193,82 +189,54 @@ internal fun MainBottomNavigation(
                 } else {
                     animatedIndicatorOffset.value
                 }
-                val selectionProgress = if (maxDragOffsetPx > 0f) {
-                    (indicatorOffsetPx / maxDragOffsetPx).coerceIn(0f, 1f)
+                val selectionPosition = if (itemWidthPx > 0f) {
+                    (indicatorOffsetPx / itemWidthPx)
+                        .coerceIn(0f, destinations.lastIndex.toFloat())
                 } else {
-                    0.5f
+                    selectedIndex.toFloat()
                 }
-                val selectionPosition =
-                    selectionProgress * destinations.lastIndex
                 val indicatorHorizontalInsetPx = with(density) {
                     indicatorHorizontalInset.toPx()
                 }
                 val indicatorLeftPx = indicatorOffsetPx + indicatorHorizontalInsetPx
                 val stretchVelocityPxPerSecond = with(density) { 2200.dp.toPx() }
-                val dragSpeedProgress = if (isDragging) {
-                    (abs(dragVelocityPxPerSecond) / stretchVelocityPxPerSecond)
-                        .coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-                val indicatorScale by animateFloatAsState(
-                    targetValue = when {
-                        isDragging -> 1.10f
-                        isLongPressed -> 1.08f
-                        pressedIndex >= 0 -> 1.055f
-                        else -> 1f
-                    },
-                    animationSpec = spring(dampingRatio = 0.38f, stiffness = 680f),
-                    label = "bottomNavigationIndicatorScale",
+                val reflectionProgress by animateFloatAsState(
+                    targetValue = if (isDragging) 1f else 0f,
+                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 620f),
+                    label = "bottomNavigationReflectionProgress",
                 )
-                val indicatorStretchX by animateFloatAsState(
-                    targetValue = 1f + dragSpeedProgress * 0.18f,
-                    animationSpec = spring(dampingRatio = 0.54f, stiffness = 720f),
-                    label = "bottomNavigationIndicatorStretchX",
-                )
-                val indicatorStretchY by animateFloatAsState(
-                    targetValue = 1f - dragSpeedProgress * 0.035f,
-                    animationSpec = spring(dampingRatio = 0.58f, stiffness = 760f),
-                    label = "bottomNavigationIndicatorStretchY",
-                )
-                val indicatorShadowElevation by animateDpAsState(
-                    targetValue = (8f + dragSpeedProgress * 8f).dp,
-                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 620f),
-                    label = "bottomNavigationIndicatorShadowElevation",
-                )
-                val indicatorVerticalInset by animateDpAsState(
-                    targetValue = if (isDragging || pressedIndex == selectedIndex) 1.dp else 3.dp,
-                    animationSpec = spring(dampingRatio = 0.42f, stiffness = 820f),
-                    label = "bottomNavigationIndicatorVerticalInset",
-                )
-                val indicatorBackground = Brush.verticalGradient(
-                    colors = if (darkTheme) {
-                        listOf(
-                            Color.White.copy(alpha = 0.14f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.10f),
-                        )
-                    } else {
-                        listOf(
-                            Color.White.copy(alpha = 0.48f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
-                        )
-                    },
-                )
-                val indicatorBorder = Brush.verticalGradient(
+                val indicatorRim = Brush.horizontalGradient(
                     listOf(
-                        Color.White.copy(alpha = if (darkTheme) 0.38f else 0.98f),
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+                        lerp(
+                            Color.White.copy(alpha = if (darkTheme) 0.16f else 0.34f),
+                            Color(0xFF52DCE5).copy(alpha = if (darkTheme) 0.18f else 0.24f),
+                            reflectionProgress,
+                        ),
+                        Color.White.copy(alpha = if (darkTheme) 0.34f else 0.68f),
+                        lerp(
+                            Color.White.copy(alpha = if (darkTheme) 0.14f else 0.28f),
+                            Color(0xFF9C78FF).copy(alpha = if (darkTheme) 0.16f else 0.22f),
+                            reflectionProgress,
+                        ),
                     ),
                 )
-                val lensMagnification by animateFloatAsState(
+                val indicatorScale by animateFloatAsState(
                     targetValue = when {
-                        isDragging -> 1.15f
-                        pressedIndex == selectedIndex -> 1.10f
-                        isLongPressed -> 1.07f
-                        else -> 1.035f
+                        isDragging -> 1.35f
+                        pressedIndex >= 0 -> 1.15f
+                        else -> 1f
                     },
-                    animationSpec = spring(dampingRatio = 0.52f, stiffness = 610f),
-                    label = "bottomNavigationLensMagnification",
+                    animationSpec = spring(dampingRatio = 0.46f, stiffness = 520f),
+                    label = "bottomNavigationIndicatorScale",
+                )
+                val indicatorVerticalInset by animateDpAsState(
+                    targetValue = when {
+                        isDragging -> 0.dp
+                        pressedIndex == selectedIndex -> 2.dp
+                        else -> IndicatorEdgeInset
+                    },
+                    animationSpec = spring(dampingRatio = 0.42f, stiffness = 820f),
+                    label = "bottomNavigationIndicatorVerticalInset",
                 )
                 val dragState = rememberDraggableState { delta ->
                     if (isDragging && maxDragOffsetPx > 0f) {
@@ -311,7 +279,6 @@ internal fun MainBottomNavigation(
                                 val hitRight = indicatorLeftPx + indicatorWidthPx
                                 if (startPosition.x in hitLeft..hitRight) {
                                     pressedIndex = -1
-                                    isLongPressed = false
                                     isDragging = true
                                     dragOffsetPx = indicatorOffsetPx
                                     dragVelocityPxPerSecond = 0f
@@ -350,63 +317,90 @@ internal fun MainBottomNavigation(
                             },
                         ),
                 ) {
+                    NavigationBackdropItems(
+                        destinations = destinations,
+                        selectionPosition = selectionPosition,
+                        selectedTint = MaterialTheme.colorScheme.secondary,
+                        unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clearAndSetSemantics { }
+                            .alpha(0f)
+                            .layerBackdrop(navigationItemsBackdrop)
+                            .fillMaxSize(),
+                    )
+
                     Box(
                         modifier = Modifier
                             .width(indicatorWidth)
                             .fillMaxHeight()
                             .graphicsLayer {
                                 translationX = indicatorLeftPx
-                                scaleX = indicatorScale * indicatorStretchX
-                                scaleY = indicatorScale * indicatorStretchY
+                                scaleX = indicatorScale
+                                scaleY = indicatorScale
                             }
                             .padding(vertical = indicatorVerticalInset.coerceAtLeast(0.dp))
-                            .shadow(
-                                elevation = indicatorShadowElevation,
-                                shape = IndicatorShape,
-                                clip = false,
-                                ambientColor = Color(0xFF52DCE5).copy(
-                                    alpha = if (darkTheme) 0.22f else 0.18f,
-                                ),
-                                spotColor = Color(0xFF9C78FF).copy(
-                                    alpha = if (darkTheme) 0.28f else 0.20f,
-                                ),
-                            )
                             .clip(IndicatorShape)
-                            .background(indicatorBackground)
-                            .border(0.8.dp, indicatorBorder, IndicatorShape),
+                            .drawBackdrop(
+                                backdrop = backdrop,
+                                shape = { IndicatorShape },
+                                effects = {
+                                    vibrancy()
+                                    blur((7f - reflectionProgress * 3f).dp.toPx())
+                                    lens(
+                                        (18f * reflectionProgress).dp.toPx(),
+                                        (26f * reflectionProgress).dp.toPx(),
+                                        chromaticAberration = true,
+                                    )
+                                },
+                                onDrawSurface = {
+                                    drawRect(
+                                        lerp(
+                                            Color(0xFF8C9198).copy(
+                                                alpha = if (darkTheme) 0.28f else 0.22f,
+                                            ),
+                                            Color.White.copy(
+                                                alpha = if (darkTheme) 0.20f else 0.26f,
+                                            ),
+                                            reflectionProgress,
+                                        ),
+                                    )
+                                },
+                            )
+                            .border(
+                                width = 0.8.dp,
+                                brush = indicatorRim,
+                                shape = IndicatorShape,
+                            ),
                     )
 
                     Row(modifier = Modifier.fillMaxSize()) {
                         destinations.forEachIndexed { index, destination ->
-                            val selected = selectedIndex == index
+                            val committedSelected = selectedIndex == index
+                            val selectionInfluence =
+                                (1f - abs(index - selectionPosition)).coerceIn(0f, 1f)
                             val label = stringResource(destination.labelRes)
                             val itemPressOffset by animateDpAsState(
                                 targetValue = if (pressedIndex == index) 2.dp else 0.dp,
                                 animationSpec = spring(dampingRatio = 0.34f, stiffness = 850f),
                                 label = "bottomNavigationItemOffset$index",
                             )
-                            val itemIconSize by animateDpAsState(
-                                targetValue = if (pressedIndex == index) 19.dp else 22.dp,
-                                animationSpec = spring(dampingRatio = 0.36f, stiffness = 900f),
-                                label = "bottomNavigationItemIconSize$index",
+                            val itemColor = lerp(
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                MaterialTheme.colorScheme.secondary,
+                                selectionInfluence,
                             )
-                            val itemColor by animateColorAsState(
-                                targetValue = if (selected) {
-                                    MaterialTheme.colorScheme.secondary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                animationSpec = spring(stiffness = 650f),
-                                label = "bottomNavigationItemColor$index",
-                            )
+                            val smoothCoverage = selectionInfluence * selectionInfluence *
+                                (3f - 2f * selectionInfluence)
+                            val itemAlpha = 1f - smoothCoverage * reflectionProgress
 
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
+                                    .graphicsLayer { alpha = itemAlpha }
                                     .semantics {
                                         role = Role.Tab
-                                        this.selected = selected
+                                        this.selected = committedSelected
                                         onClick(label = label) {
                                             onDestinationSelected(destination)
                                             true
@@ -418,10 +412,8 @@ internal fun MainBottomNavigation(
                                                 pressedIndex = index
                                                 tryAwaitRelease()
                                                 if (pressedIndex == index) pressedIndex = -1
-                                                isLongPressed = false
                                             },
                                             onLongPress = {
-                                                isLongPressed = true
                                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                             },
                                             onTap = { onDestinationSelected(destination) },
@@ -432,141 +424,37 @@ internal fun MainBottomNavigation(
                                 NavigationItemVisual(
                                     destination = destination,
                                     label = label,
-                                    selected = selected,
+                                    selected = selectionInfluence >= 0.5f,
                                     tint = itemColor,
-                                    iconSize = itemIconSize,
+                                    iconSize = 22.dp,
                                     modifier = Modifier.offset(y = itemPressOffset),
                                 )
                             }
                         }
                     }
 
-                    val verticalInsetPx = with(density) {
-                        indicatorVerticalInset.coerceAtLeast(0.dp).toPx()
-                    }
-                    val navigationHeightPx = with(density) { 58.dp.toPx() }
-                    val reflectionOffsetPx =
-                        indicatorWidthPx * (-0.42f + selectionProgress * 0.82f)
-
                     Box(
                         modifier = Modifier
                             .width(indicatorWidth)
                             .fillMaxHeight()
+                            .zIndex(2f)
                             .graphicsLayer {
                                 translationX = indicatorLeftPx
-                                scaleX = indicatorScale * indicatorStretchX
-                                scaleY = indicatorScale * indicatorStretchY
+                                alpha = reflectionProgress
                             }
                             .padding(vertical = indicatorVerticalInset.coerceAtLeast(0.dp))
-                            .clip(IndicatorShape)
-                            .background(
-                                Brush.verticalGradient(
-                                    if (darkTheme) {
-                                        listOf(
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
-                                        )
-                                    } else {
-                                        listOf(
-                                            Color.White.copy(alpha = 0.54f),
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                                        )
-                                    },
-                                ),
-                            )
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.horizontalGradient(
-                                    listOf(
-                                        Color(0xFF52DCE5).copy(
-                                            alpha = if (darkTheme) 0.22f else 0.34f,
-                                        ),
-                                        Color.White.copy(
-                                            alpha = if (darkTheme) 0.14f else 0.44f,
-                                        ),
-                                        Color(0xFF9C78FF).copy(
-                                            alpha = if (darkTheme) 0.20f else 0.30f,
-                                        ),
-                                    ),
-                                ),
-                                shape = IndicatorShape,
+                            .drawBackdrop(
+                                backdrop = navigationItemsBackdrop,
+                                shape = { IndicatorShape },
+                                effects = { },
+                                layerBlock = {
+                                    scaleX = indicatorScale
+                                    scaleY = indicatorScale
+                                },
+                                onDrawSurface = { },
                             )
                             .clearAndSetSemantics { },
-                    ) {
-                        NavigationLensContent(
-                            destinations = destinations,
-                            selectedTint = MaterialTheme.colorScheme.secondary,
-                            unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectionPosition = selectionPosition,
-                            navigationWidthPx = navigationWidthPx.roundToInt(),
-                            navigationHeightPx = navigationHeightPx.roundToInt(),
-                            lensContentLeftPx = indicatorLeftPx,
-                            lensContentTopPx = verticalInsetPx,
-                            magnification = lensMagnification,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.linearGradient(
-                                        colorStops = arrayOf(
-                                            0.00f to Color.Transparent,
-                                            0.34f to Color.Transparent,
-                                            0.48f to Color.White.copy(
-                                                alpha = if (darkTheme) 0.13f else 0.38f,
-                                            ),
-                                            0.58f to Color.White.copy(
-                                                alpha = if (darkTheme) 0.06f else 0.16f,
-                                            ),
-                                            0.72f to Color.Transparent,
-                                            1.00f to Color.Transparent,
-                                        ),
-                                        start = androidx.compose.ui.geometry.Offset(
-                                            reflectionOffsetPx,
-                                            -verticalInsetPx,
-                                        ),
-                                        end = androidx.compose.ui.geometry.Offset(
-                                            reflectionOffsetPx +
-                                                indicatorWidthPx * 0.78f,
-                                            with(density) { 58.dp.toPx() },
-                                        ),
-                                    ),
-                                ),
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth(0.72f)
-                                .height(2.dp)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(
-                                            Color(0xFF52DCE5).copy(
-                                                alpha = if (darkTheme) 0.12f else 0.24f,
-                                            ),
-                                            Color.Transparent,
-                                            Color(0xFF9C78FF).copy(
-                                                alpha = if (darkTheme) 0.10f else 0.20f,
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .fillMaxWidth(0.84f)
-                                .height(1.dp)
-                                .background(
-                                    Color.White.copy(alpha = if (darkTheme) 0.24f else 0.78f),
-                                ),
-                        )
-                    }
+                    )
 
                     Box(
                         modifier = Modifier
@@ -577,7 +465,7 @@ internal fun MainBottomNavigation(
                                 Brush.horizontalGradient(
                                     listOf(
                                         Color.Transparent,
-                                        Color.White.copy(alpha = if (darkTheme) 0.16f else 0.62f),
+                                        Color.White.copy(alpha = if (darkTheme) 0.10f else 0.38f),
                                         Color.Transparent,
                                     ),
                                 ),
@@ -590,53 +478,27 @@ internal fun MainBottomNavigation(
 }
 
 @Composable
-private fun NavigationLensContent(
+private fun NavigationBackdropItems(
     destinations: List<MainDestination>,
+    selectionPosition: Float,
     selectedTint: Color,
     unselectedTint: Color,
-    selectionPosition: Float,
-    navigationWidthPx: Int,
-    navigationHeightPx: Int,
-    lensContentLeftPx: Float,
-    lensContentTopPx: Float,
-    magnification: Float,
     modifier: Modifier = Modifier,
 ) {
-    Layout(
-        modifier = modifier,
-        content = {
-            Row(modifier = Modifier.fillMaxSize()) {
-                destinations.forEachIndexed { index, destination ->
-                    val selectionInfluence =
-                        (1f - abs(index - selectionPosition)).coerceIn(0f, 1f)
-                    NavigationItemVisual(
-                        destination = destination,
-                        label = stringResource(destination.labelRes),
-                        selected = true,
-                        tint = lerp(unselectedTint, selectedTint, selectionInfluence),
-                        iconSize = 22.dp,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .graphicsLayer {
-                                scaleX = magnification
-                                scaleY = magnification
-                            },
-                    )
-                }
-            }
-        },
-    ) { measurables, constraints ->
-        val navigationConstraints = Constraints.fixed(
-            width = navigationWidthPx.coerceAtLeast(1),
-            height = navigationHeightPx.coerceAtLeast(1),
-        )
-        val contentPlaceable = measurables.single().measure(navigationConstraints)
-        layout(constraints.maxWidth, constraints.maxHeight) {
-            contentPlaceable.place(
-                x = -lensContentLeftPx.roundToInt(),
-                y = -lensContentTopPx.roundToInt(),
+    Row(modifier = modifier) {
+        destinations.forEachIndexed { index, destination ->
+            val selectionInfluence =
+                (1f - abs(index - selectionPosition)).coerceIn(0f, 1f)
+            NavigationItemVisual(
+                destination = destination,
+                label = stringResource(destination.labelRes),
+                selected = selectionInfluence >= 0.5f,
+                tint = lerp(unselectedTint, selectedTint, selectionInfluence),
+                iconSize = 22.dp,
+                contentDescription = null,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
     }
@@ -669,7 +531,7 @@ private fun NavigationItemVisual(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = FontWeight.Medium,
                 color = tint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

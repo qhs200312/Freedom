@@ -1,6 +1,8 @@
 package com.v2ray.ang.handler
 
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.AngApplication
+import com.v2ray.ang.util.RuntimeDiagnostics
 import com.v2ray.ang.dto.GeoLocation
 import com.v2ray.ang.dto.IPAPIInfo
 import com.v2ray.ang.dto.UrlContentRequest
@@ -54,31 +56,75 @@ object SpeedtestManager {
         return "(${location.countryCode.ifBlank { "unknown" }}) ${location.ip.ifBlank { "unknown" }}"
     }
 
-    fun getIPInfo(useProxy: Boolean): GeoLocation? {
+    fun getIPInfo(
+        useProxy: Boolean,
+        enrichLocation: Boolean = true,
+        knownLocation: GeoLocation? = null,
+    ): GeoLocation? {
         val url = MmkvManager.decodeSettingsString(AppConfig.PREF_IP_API_URL)
             .takeIf { !it.isNullOrBlank() } ?: AppConfig.IP_API_URL
 
         val proxyUsername = SettingsManager.getSocksUsername()
         val proxyPassword = SettingsManager.getSocksPassword()
-        val httpPort = if (useProxy) SettingsManager.getHttpPort() else 0
-        if (useProxy && httpPort == 0) return null
-        val content = HttpUtil.getUrlContent(
+        val socksPort = if (useProxy) SettingsManager.getSocksPort() else 0
+        if (useProxy && socksPort == 0) return null
+        fun fetch(endpoint: String, timeout: Int) = HttpUtil.getUrlContent(
             UrlContentRequest(
-                url = url,
-                timeout = 5000,
-                httpPort = httpPort,
+                url = endpoint,
+                timeout = timeout,
+                callTimeout = timeout,
+                socksPort = socksPort,
                 proxyUsername = proxyUsername,
-                proxyPassword = proxyPassword
-            )
-        ) ?: return null
-        val ipInfo = JsonUtil.fromJsonSafe(content, IPAPIInfo::class.java) ?: return null
+                proxyPassword = proxyPassword,
+            ),
+            onFailure = { category ->
+                val target = if (endpoint == url) "primary" else if (endpoint.startsWith("$url/")) "location" else "fallback"
+                RuntimeDiagnostics.exitIp(AngApplication.application, "target=$target proxy=$useProxy failure=$category")
+            },
+        )
 
-        val ip = listOf(
-            ipInfo.ip,
-            ipInfo.clientIp,
-            ipInfo.ip_addr,
-            ipInfo.query
-        ).firstOrNull { !it.isNullOrBlank() }
+        var base = knownLocation
+        // A known exit address is sufficient for enrichment; do not repeat all IP probes.
+        if (base == null) {
+            val result = ExitIpLookup.lookupDualFast(
+                url = url,
+                includeIpv6 = MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED),
+            ) { endpoint -> fetch(endpoint, 2500) }
+            if (result != null) {
+                val detected = result.geoInfo?.let { toGeoLocation(it, result.ipv4, result.ipv6) }
+                    ?: GeoLocation(
+                        ip = result.ipv4.ifBlank { result.ipv6 },
+                        ipv4 = result.ipv4,
+                        ipv6 = result.ipv6,
+                    )
+                base = detected.copy(
+                    ip = result.ipv4.ifBlank { result.ipv6.ifBlank { detected.ip } },
+                    ipv4 = result.ipv4.ifBlank { detected.effectiveIpv4 },
+                    ipv6 = result.ipv6.ifBlank { detected.effectiveIpv6 },
+                )
+            }
+        }
+        base ?: return null
+
+        if (!enrichLocation || base.hasLocationDetails) return base
+        val lookupIp = base.effectiveIpv4.ifBlank { base.effectiveIpv6 }
+        val lookupUrl = ExitIpLookup.geoLookupUrl(url, lookupIp) ?: return base
+        val info = fetch(lookupUrl, 6000)?.let { JsonUtil.fromJsonSafe(it, IPAPIInfo::class.java) }
+            ?: return base
+        if (ExitIpLookup.extractIp(info) != lookupIp) return base
+        return toGeoLocation(info, base.effectiveIpv4, base.effectiveIpv6)
+    }
+
+    private fun extractIp(ipInfo: IPAPIInfo): String? = listOf(
+        ipInfo.ip,
+        ipInfo.clientIp,
+        ipInfo.ip_addr,
+        ipInfo.query,
+    ).firstOrNull { !it.isNullOrBlank() }?.trim()
+
+    private fun toGeoLocation(ipInfo: IPAPIInfo, ipv4: String = "", ipv6: String = ""): GeoLocation {
+
+        val ip = extractIp(ipInfo).orEmpty()
 
         val countryCode = listOf(
             ipInfo.country_code,
@@ -94,7 +140,9 @@ object SpeedtestManager {
         ).firstOrNull { !it.isNullOrBlank() }
 
         val location = GeoLocation(
-            ip = ip.orEmpty(),
+            ip = ipv4.ifBlank { ipv6.ifBlank { ip.orEmpty() } },
+            ipv4 = ipv4.ifBlank { ip.orEmpty().takeIf(ExitIpLookup::isIpv4).orEmpty() },
+            ipv6 = ipv6.ifBlank { ip.orEmpty().takeIf(ExitIpLookup::isIpv6).orEmpty() },
             countryCode = countryCode.orEmpty(),
             country = listOf(
                 ipInfo.country_name,
@@ -111,6 +159,5 @@ object SpeedtestManager {
             longitude = ipInfo.longitude ?: ipInfo.lon,
         )
         return ChineseGeoNameLocalizer.localize(location, SettingsManager.getLocale())
-            .takeIf { it.ip.isNotBlank() || it.hasCoordinates }
     }
 }

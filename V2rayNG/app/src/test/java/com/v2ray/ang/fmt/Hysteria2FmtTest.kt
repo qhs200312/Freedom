@@ -10,6 +10,13 @@ import org.junit.Test
 class Hysteria2FmtTest {
 
     @Test
+    fun parseAcceptsHy2Alias() {
+        val config = Hysteria2Fmt.parse("hy2://password@example.com:443?sni=example.com#alias")
+        assertEquals("example.com", config.server)
+        assertEquals("password", config.password)
+    }
+
+    @Test
     fun parseReadsBandwidthParameters() {
         val config = Hysteria2Fmt.parse(
             "hysteria2://password@example.com:443?downmbps=200&upmbps=100#test"
@@ -58,6 +65,26 @@ class Hysteria2FmtTest {
         assertEquals("100Mbps", config.bandwidthUp)
         assertEquals("30000-40000", config.portHopping)
         assertEquals("30", config.portHoppingInterval)
+    }
+
+    @Test
+    fun parseReadsNewUdpHopFinalMaskAndSalamander() {
+        val finalMask = """{
+            "udp":[
+                {"type":"salamander","settings":{"password":"secret"}},
+                {"type":"udphop","settings":{"mode":"intervalRemote","interval":"30","remotePorts":"30000-40000"}}
+            ],
+            "quicParams":{"congestion":"force-brutal","brutalUp":"100Mbps","brutalDown":"200Mbps"}
+        }""".trimIndent()
+        val config = Hysteria2Fmt.parse(
+            "hysteria2://password@example.com:443?fm=${Utils.encodeURIComponent(finalMask)}#test"
+        )
+
+        assertEquals("secret", config.obfsPassword)
+        assertEquals("30000-40000", config.portHopping)
+        assertEquals("30", config.portHoppingInterval)
+        assertEquals("200Mbps", config.bandwidthDown)
+        assertEquals("100Mbps", config.bandwidthUp)
     }
 
     @Test

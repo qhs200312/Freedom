@@ -282,7 +282,7 @@ private fun MapStatusPanel(
                 .align(Alignment.BottomCenter)
                 .size(64.dp),
             shape = CircleShape,
-            color = DisconnectedBlue,
+            color = if (uiState.isStarting || uiState.isRunning) ConnectedGreen else DisconnectedBlue,
             contentColor = Color.White,
             shadowElevation = 6.dp,
         ) {

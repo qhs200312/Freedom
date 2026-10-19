@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -15,14 +16,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,6 +40,7 @@ import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AppConfig.BUILTIN_OUTBOUND_TAGS
 import com.v2ray.ang.AppConfig.TAG_PROXY
 import com.v2ray.ang.R
+import com.v2ray.ang.core.RoutingTargets
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.extension.toast
@@ -46,6 +53,7 @@ import com.v2ray.ang.ui.compose.DeleteConfirmDialog
 import com.v2ray.ang.ui.compose.FormDropdownField
 import com.v2ray.ang.ui.compose.FormTextField
 import com.v2ray.ang.ui.compose.SettingsSwitchItem
+import com.v2ray.ang.ui.compose.SettingsMenuItem
 import com.v2ray.ang.ui.compose.verticalScrollbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,18 +62,31 @@ import java.util.UUID
 
 private val ROUTING_NETWORK_OPTIONS = listOf("tcp", "udp", "tcp,udp")
 
+internal enum class RoutingMatchMode { DOMAINS, APPS, ADVANCED }
+
+internal fun routingMatchMode(rule: RulesetItem?): RoutingMatchMode {
+    if (rule == null) return RoutingMatchMode.DOMAINS
+    val hasAdvanced = !rule.ip.isNullOrEmpty() || !rule.protocol.isNullOrEmpty() ||
+        !rule.network.isNullOrBlank() || !rule.port.isNullOrBlank() ||
+        (!rule.process.isNullOrEmpty() && !rule.domain.isNullOrEmpty())
+    return when {
+        hasAdvanced -> RoutingMatchMode.ADVANCED
+        !rule.process.isNullOrEmpty() -> RoutingMatchMode.APPS
+        else -> RoutingMatchMode.DOMAINS
+    }
+}
+
 class RoutingEditActivity : BaseComponentActivity() {
     private val position by lazy { intent.getIntExtra("position", -1) }
 
     private var initial: RulesetItem? = null
-    private lateinit var outboundSuggestions: List<String>
+    private lateinit var nodeOptions: List<RoutingNodeOption>
     private var canUseProcess: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initial = SettingsManager.getRoutingRuleset(position)
-        val profileRemarks = SettingsManager.getProfileRemarks()
-        outboundSuggestions = (BUILTIN_OUTBOUND_TAGS.toList() + profileRemarks).distinct()
+        nodeOptions = loadRoutingNodeOptions(this)
         canUseProcess = SettingsManager.canUseProcessRouting()
     }
 
@@ -74,11 +95,12 @@ class RoutingEditActivity : BaseComponentActivity() {
         RoutingEditScreen(
             position = position,
             initial = initial,
-            outboundSuggestions = outboundSuggestions,
+            nodeOptions = nodeOptions,
             canUseProcess = canUseProcess,
             onBackClick = { finish() },
             onSave = { saveServer(it) },
-            onDelete = { deleteServer() }
+            onDelete = { deleteServer() },
+            initialAppRule = intent.getBooleanExtra("app_rule", false),
         )
     }
 
@@ -107,15 +129,17 @@ class RoutingEditActivity : BaseComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoutingEditScreen(
     position: Int,
     initial: RulesetItem?,
-    outboundSuggestions: List<String>,
+    nodeOptions: List<RoutingNodeOption>,
     canUseProcess: Boolean,
     onBackClick: () -> Unit,
     onSave: (RulesetItem) -> Boolean,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    initialAppRule: Boolean = false,
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -131,7 +155,11 @@ fun RoutingEditScreen(
     var outboundTag by rememberSaveable {
         mutableStateOf(initial?.outboundTag ?: BUILTIN_OUTBOUND_TAGS.first())
     }
+    var outboundProfileId by rememberSaveable { mutableStateOf(initial?.outboundProfileId) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var matchMode by rememberSaveable {
+        mutableStateOf(if (initialAppRule) RoutingMatchMode.APPS else routingMatchMode(initial))
+    }
     val selectedNetwork = network.ifBlank { "tcp,udp" }
 
     val processPickerLauncher = rememberLauncherForActivityResult(
@@ -140,6 +168,9 @@ fun RoutingEditScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val selectedPackages = AppPickerActivity.getSelectedPackages(result.data)
             processText = selectedPackages.joinToString(",")
+            if (remarks.isBlank() && selectedPackages.isNotEmpty()) {
+                remarks = routingApplicationNames(context, selectedPackages)
+            }
         }
     }
 
@@ -148,29 +179,26 @@ fun RoutingEditScreen(
         rulesetItem.apply {
             this.remarks = remarks
             this.locked = locked
-            this.domain = domain.nullIfBlank()
+            this.domain = if (matchMode == RoutingMatchMode.APPS) null else RoutingTargets.parseDomains(domain)
+            this.ip = ip.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
                 ?.split(",")
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
                 ?.takeIf { it.isNotEmpty() }
-            this.ip = ip.nullIfBlank()
+            this.process = processText.takeIf { matchMode != RoutingMatchMode.DOMAINS }.nullIfBlank()
                 ?.split(",")
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
                 ?.takeIf { it.isNotEmpty() }
-            this.process = processText.nullIfBlank()
+            this.protocol = protocol.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
                 ?.split(",")
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
                 ?.takeIf { it.isNotEmpty() }
-            this.protocol = protocol.nullIfBlank()
-                ?.split(",")
-                ?.map { it.trim() }
-                ?.filter { it.isNotEmpty() }
-                ?.takeIf { it.isNotEmpty() }
-            this.port = port.nullIfBlank()
-            this.network = network.nullIfBlank()
+            this.port = port.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
+            this.network = network.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
             this.outboundTag = outboundTag.trim().ifEmpty { TAG_PROXY }
+            this.outboundProfileId = outboundProfileId
         }
         return rulesetItem
     }
@@ -190,7 +218,12 @@ fun RoutingEditScreen(
                             )
                         }
                     }
-                    IconButton(onClick = { onSave(buildRuleset()) }) {
+                    IconButton(onClick = {
+                        val rule = buildRuleset()
+                        if (matchMode == RoutingMatchMode.APPS && rule.process.isNullOrEmpty()) {
+                            context.toast(R.string.routing_apps_required)
+                        } else onSave(rule)
+                    }) {
                         Icon(
                             painterResource(R.drawable.ic_fab_check),
                             contentDescription = stringResource(R.string.menu_item_save_config)
@@ -210,6 +243,20 @@ fun RoutingEditScreen(
                 .verticalScrollbar(scrollState)
                 .padding(vertical = 8.dp)
         ) {
+            val modes = RoutingMatchMode.entries
+            val modeTitles = listOf(R.string.routing_match_domains, R.string.routing_match_apps, R.string.routing_match_advanced)
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                modes.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = matchMode == mode,
+                        onClick = { matchMode = mode },
+                        enabled = mode != RoutingMatchMode.APPS || canUseProcess || !initial?.process.isNullOrEmpty(),
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                    ) { Text(stringResource(modeTitles[index])) }
+                }
+            }
             FormTextField(
                 label = stringResource(R.string.sub_setting_remarks),
                 value = remarks,
@@ -220,27 +267,41 @@ fun RoutingEditScreen(
                 checked = locked,
                 onCheckedChange = { locked = it }
             )
-            FormTextField(
+            RoutingOutboundField(
+                tag = outboundTag,
+                profileId = outboundProfileId,
+                nodes = nodeOptions,
+                onSelected = { tag, id ->
+                    outboundTag = tag
+                    outboundProfileId = id
+                },
+            )
+            if (matchMode != RoutingMatchMode.APPS) FormTextField(
                 label = stringResource(R.string.routing_settings_domain),
-                placeholder = stringResource(R.string.routing_settings_tips),
+                placeholder = stringResource(R.string.routing_domain_example),
                 value = domain,
                 onValueChange = { domain = it }
             )
-            FormTextField(
+            if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
                 label = stringResource(R.string.routing_settings_ip),
                 placeholder = stringResource(R.string.routing_settings_tips),
                 value = ip,
                 onValueChange = { ip = it }
             )
-            FormTextField(
+            if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
                 label = stringResource(R.string.routing_settings_process),
                 placeholder = stringResource(R.string.routing_settings_tips),
                 value = processText,
                 onValueChange = { processText = it },
                 enabled = canUseProcess
             )
-            if (canUseProcess) {
-                TextButton(
+            if (matchMode != RoutingMatchMode.DOMAINS && canUseProcess) {
+                val packages = processText.split(',').map(String::trim).filter(String::isNotEmpty)
+                val applicationNames = remember(context, processText) { routingApplicationNames(context, packages) }
+                SettingsMenuItem(
+                    icon = painterResource(R.drawable.ic_per_apps_24dp),
+                    title = stringResource(R.string.routing_settings_process_select),
+                    subtitle = applicationNames.ifBlank { context.getString(R.string.routing_apps_empty) },
                     onClick = {
                         val current = processText
                             .split(",")
@@ -255,39 +316,29 @@ fun RoutingEditScreen(
                             )
                         )
                     },
-                    modifier = Modifier.padding(start = 16.dp)
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_per_apps_24dp),
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.routing_settings_process_select))
-                }
+                )
+            } else if (matchMode != RoutingMatchMode.DOMAINS) {
+                Text(
+                    stringResource(R.string.routing_apps_unavailable),
+                    modifier = Modifier.padding(16.dp),
+                )
             }
-            FormTextField(
+            if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
                 label = stringResource(R.string.routing_settings_port),
                 value = port,
                 onValueChange = { port = it }
             )
-            FormTextField(
+            if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
                 label = stringResource(R.string.routing_settings_protocol),
                 placeholder = stringResource(R.string.routing_settings_protocol_tip),
                 value = protocol,
                 onValueChange = { protocol = it }
             )
-            FormDropdownField(
+            if (matchMode == RoutingMatchMode.ADVANCED) FormDropdownField(
                 label = stringResource(R.string.routing_settings_network),
                 value = selectedNetwork,
                 options = ROUTING_NETWORK_OPTIONS,
                 onValueChange = { network = it }
-            )
-            FormDropdownField(
-                label = stringResource(R.string.routing_settings_outbound_tag),
-                value = outboundTag,
-                options = outboundSuggestions,
-                onValueChange = { outboundTag = it },
-                editable = true
             )
             Spacer(modifier = Modifier.height(36.dp))
         }

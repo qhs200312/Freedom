@@ -10,6 +10,7 @@ import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.DEFAULT_SUBSCRIPTION_ID
 import com.v2ray.ang.AppConfig.PREF_IS_BOOTED
 import com.v2ray.ang.AppConfig.PREF_ROUTING_RULESET
+import com.v2ray.ang.core.RoutingTargets
 import com.v2ray.ang.dto.entities.AssetUrlCache
 import com.v2ray.ang.dto.entities.AssetUrlItem
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -294,12 +295,13 @@ object MmkvManager {
      * @param guid The server GUID.
      * @param testResult The test delay in milliseconds.
      */
-    fun encodeServerTestDelayMillis(guid: String, testResult: Long) {
+    fun encodeServerTestDelayMillis(guid: String, testResult: Long, method: String = "connect") {
         if (guid.isBlank()) {
             return
         }
         val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
         aff.testDelayMillis = testResult
+        aff.testMethod = method
         serverAffStorage.encode(guid, JsonUtil.toJson(aff))
     }
 
@@ -567,7 +569,10 @@ object MmkvManager {
         settingsStorage.checkContentChangedByOuterProcess()
         val ruleset = settingsStorage.decodeString(PREF_ROUTING_RULESET)
         if (ruleset.isNullOrEmpty()) return null
-        return JsonUtil.fromJsonSafe(ruleset, Array<RulesetItem>::class.java)?.toMutableList() ?: mutableListOf()
+        return JsonUtil.fromJsonSafe(ruleset, Array<RulesetItem>::class.java)?.map { rule ->
+            // Repair website URLs saved by older editors without changing explicit match syntax.
+            rule.apply { domain = domain?.map(RoutingTargets::normalizeWebsiteUrl)?.distinct() }
+        }?.toMutableList() ?: mutableListOf()
     }
 
     /**

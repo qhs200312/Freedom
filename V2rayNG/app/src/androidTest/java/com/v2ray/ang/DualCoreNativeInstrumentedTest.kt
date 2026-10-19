@@ -26,12 +26,61 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DualCoreNativeInstrumentedTest {
     @Test
+    fun nativeXraySocksAuthenticationCarriesActualHttpData() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        Seq.setContext(context)
+        Libv2ray.initCoreEnv(context.filesDir.absolutePath, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        val controller = Libv2ray.newCoreController(object : CoreCallbackHandler {
+            override fun startup(): Long = 0
+            override fun shutdown(): Long = 0
+            override fun onEmitStatus(l: Long, s: String?): Long = 0
+        })
+        val socksPort = Utils.findRandomFreePort()
+        val executor = Executors.newSingleThreadExecutor()
+        ServerSocket(0).use { server ->
+            server.soTimeout = 5_000
+            val responseTask = executor.submit {
+                server.accept().use { socket ->
+                    socket.soTimeout = 5_000
+                    val reader = socket.getInputStream().bufferedReader()
+                    assertTrue(reader.readLine().startsWith("GET /"))
+                    while (!reader.readLine().isNullOrEmpty()) { }
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray()
+                    )
+                    socket.getOutputStream().flush()
+                }
+            }
+            try {
+                controller.startLoop("""{
+                    "log":{"loglevel":"none"},
+                    "inbounds":[{"protocol":"socks","listen":"127.0.0.1","port":$socksPort,
+                        "settings":{"auth":"password","accounts":[{"user":"user","pass":"secret"}]}}],
+                    "outbounds":[{"protocol":"freedom","tag":"direct"}]
+                }""", 0)
+                val request = UrlContentRequest(
+                    url = "http://127.0.0.1:${server.localPort}/", timeout = 5_000,
+                    socksPort = socksPort, proxyUsername = "user", proxyPassword = "secret",
+                )
+                assertTrue(HttpUtil.isUrlReachable(request))
+                responseTask.get(6, TimeUnit.SECONDS)
+                controller.stopLoop()
+                assertTrue(!HttpUtil.isUrlReachable(request.copy(timeout = 500)))
+            } finally {
+                controller.stopLoop()
+                executor.shutdownNow()
+            }
+        }
+    }
+
+    @Test
     fun nativeSingBoxSocksAuthenticationCarriesActualHttpData() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val controller = Corebundle.newSingBoxController(context.filesDir.absolutePath, null)
         val socksPort = Utils.findRandomFreePort()
         val executor = Executors.newSingleThreadExecutor()
         ServerSocket(0).use { server ->
+            server.soTimeout = 5_000
             val responseTask = executor.submit {
                 server.accept().use { socket ->
                     socket.soTimeout = 5_000
@@ -68,6 +117,28 @@ class DualCoreNativeInstrumentedTest {
     }
 
     @Test
+    fun nativeSingBoxCloseReleasesListenersAndCacheFile() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val port = Utils.findRandomFreePort()
+        val config = """{
+            "log":{"level":"error"},
+            "inbounds":[{"type":"mixed","listen":"127.0.0.1","listen_port":$port}],
+            "outbounds":[{"type":"direct","tag":"direct"}],
+            "route":{"final":"direct"}
+        }"""
+        repeat(2) {
+            val controller = Corebundle.newSingBoxController(context.filesDir.absolutePath, null)
+            try {
+                controller.start(config)
+                assertTrue(controller.isRunning)
+            } finally {
+                controller.close()
+            }
+            assertTrue(!controller.isRunning)
+        }
+    }
+
+    @Test
     fun runtimeSocksPortIsReadFromSharedStorageWithoutProcessCache() {
         val previousDynamic = MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_SOCKS_PORT, false)
         val previousPort = MmkvManager.decodeSettingsString("runtime_socks_port")
@@ -85,8 +156,8 @@ class DualCoreNativeInstrumentedTest {
 
     @Test
     fun bundledCoresExposeExpectedVersionsAndAcceptHy2Config() {
-        assertTrue(Libv2ray.checkVersionX().contains("Xray-core v26.9.9"))
-        assertEquals("1.14.0", Corebundle.singBoxVersion())
+        assertTrue(Libv2ray.checkVersionX().contains("Xray-core v26.10.17"))
+        assertEquals("1.14.3", Corebundle.singBoxVersion())
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         SettingsManager.initAssets(context, context.assets)

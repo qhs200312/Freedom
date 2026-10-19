@@ -76,6 +76,11 @@ data class ProfileItem(
 
     /** Optional runtime selector: AUTO, XRAY, or SING_BOX. Null preserves legacy AUTO behavior. */
     var preferredCore: String? = null,
+    var nowhereMorph: Boolean = true,
+    var anytlsIdleSessionCheckInterval: String? = null,
+    var anytlsIdleSessionTimeout: String? = null,
+    var anytlsMinIdleSession: Int? = null,
+    var anytlsClientMetadata: String? = null,
 ) {
 
     companion object {

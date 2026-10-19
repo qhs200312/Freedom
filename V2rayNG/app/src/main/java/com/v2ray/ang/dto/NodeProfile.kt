@@ -65,6 +65,10 @@ data class NodeProfile(
     val hopMode: String? = null,
     val hopRemoteIPs: List<String> = emptyList(),
     val xrayCongestion: String? = null,
+    val anytlsIdleSessionCheckInterval: String? = null,
+    val anytlsIdleSessionTimeout: String? = null,
+    val anytlsMinIdleSession: Int? = null,
+    val anytlsClientMetadata: String? = null,
 ) {
     companion object {
         fun from(item: ProfileItem, id: String? = null): NodeProfile {
@@ -87,7 +91,8 @@ data class NodeProfile(
             serviceName = item.serviceName,
             authority = item.authority,
             security = item.security,
-            tlsEnabled = item.security.equals("tls", true) || item.security.equals("reality", true),
+            tlsEnabled = item.configType == EConfigType.ANYTLS ||
+                item.security.equals("tls", true) || item.security.equals("reality", true),
             sni = item.sni,
             insecure = item.insecure == true,
             alpn = item.alpn.orEmpty().split(',').map(String::trim).filter(String::isNotEmpty),
@@ -119,6 +124,10 @@ data class NodeProfile(
             hopMode = mask.hopMode,
             hopRemoteIPs = mask.hopRemoteIPs,
             xrayCongestion = mask.congestion,
+            anytlsIdleSessionCheckInterval = item.anytlsIdleSessionCheckInterval,
+            anytlsIdleSessionTimeout = item.anytlsIdleSessionTimeout,
+            anytlsMinIdleSession = item.anytlsMinIdleSession,
+            anytlsClientMetadata = item.anytlsClientMetadata,
             )
         }
 

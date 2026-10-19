@@ -23,6 +23,8 @@ import com.v2ray.ang.handler.UpdateCheckerManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.RuntimeDiagnostics
+import com.v2ray.ang.util.Utils
+import com.v2ray.ang.handler.requiresHttpSubscriptionConsent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -64,6 +66,9 @@ class MainViewModel(
             selectedGuid = initialSelectedGuid,
             selectedServerName = initialSelectedProfile?.remarks.orEmpty(),
             selectedServerAddress = initialSelectedProfile?.getServerAddressAndPort().orEmpty(),
+            selectedServerProtocol = initialSelectedProfile?.configType?.name.orEmpty(),
+            selectedServerDelayMillis = initialSelectedGuid?.let(dataSource::decodeAffiliationInfo)
+                ?.testDelayMillis?.takeIf { it != 0L },
             statusText = disconnectedText,
             proxyMode = SettingsManager.getProxyMode(),
             confirmRemove = dataSource.getConfirmRemove(),
@@ -183,6 +188,7 @@ class MainViewModel(
 
             MainServiceEvent.MeasureConfigSuccess -> {
                 viewModelScope.launch(ioDispatcher) {
+                    refreshSelectedGuid()
                     val gid = testingGroupId ?: uiState.value.selectedGroupId
                     cacheMutex.withLock { groupDataCache.remove(gid) }
                     updateGroupUi(gid, loadGroup(gid, forceRefresh = true))
@@ -225,7 +231,7 @@ class MainViewModel(
             MainAction.Initialize -> initialize()
             MainAction.RefreshGroups -> setupGroupTab(forceRefresh = true)
             MainAction.RefreshExitLocation -> refreshIPLocation(_uiState.value.isRunning)
-            MainAction.TestAllServers -> testAllRealPing(true)
+            MainAction.TestAllServers -> testAllRealPing(pingOnly = true)
             MainAction.TestRealAllServers -> testAllRealPing()
             MainAction.CancelTesting -> cancelAllPing()
             MainAction.RemoveAllServers -> removeAllServerAsync()
@@ -233,12 +239,15 @@ class MainViewModel(
             MainAction.RemoveInvalidServers -> removeInvalidServerAsync()
             MainAction.SortByTestResults -> sortByTestResultsAsync()
             MainAction.UpdateSubscriptions -> importConfigViaSub()
-            MainAction.ExportAll -> exportAllAsync()
             is MainAction.SelectGroup -> subscriptionIdChanged(action.groupId)
             is MainAction.SelectServer -> updateSelectedGuid(action.guid)
             is MainAction.RemoveServer -> removeServerAndRefresh(action.guid)
             is MainAction.Search -> filterConfig(action.query)
             is MainAction.ImportBatchConfig -> importBatchConfig(action.configText)
+            MainAction.ConfirmHttpImport -> _uiState.value.pendingHttpImport?.let {
+                importBatchConfig(it, allowInsecureHttp = true)
+            }
+            MainAction.DismissHttpImport -> _uiState.update { it.copy(pendingHttpImport = null) }
             is MainAction.LocateHandled -> consumeLocateTarget(action.target)
             is MainAction.ShareQRCode -> {
                 val bitmap = dataSource.share2QRCode(action.guid)
@@ -250,6 +259,8 @@ class MainViewModel(
             }
 
             MainAction.ToggleService,
+            MainAction.ExportAll,
+            MainAction.ExportSelected,
             is MainAction.SetProxyMode,
             MainAction.TestCurrentServer,
             MainAction.ImportQRcode,
@@ -332,7 +343,9 @@ class MainViewModel(
                 guid = guid,
                 profile = profile.copy(),
                 testDelayMillis = affiliation?.testDelayMillis ?: 0L,
-                testDelayString = affiliation?.getTestDelayString().orEmpty(),
+                testDelayString = if ((affiliation?.testDelayMillis ?: 0L) < 0L)
+                    dataSource.getString(R.string.node_test_unreachable)
+                    else affiliation?.getTestDelayString().orEmpty(),
                 subscriptionRemarks = subscriptionRemarks,
             )
         }
@@ -423,9 +436,9 @@ class MainViewModel(
                     it.copy(
                         groups = groups,
                         selectedGroupId = selectedGroup,
-                        selectedGuid = dataSource.getSelectServer()
                     )
                 }
+                refreshSelectedGuid()
                 groups.forEach { mutableServersForGroup(it.id) }
 
                 if (groups.isEmpty()) {
@@ -464,12 +477,18 @@ class MainViewModel(
     }
 
     // ---------- Business actions (coroutine-based) ----------
-    private fun importBatchConfig(configText: String) {
+    private fun importBatchConfig(configText: String, allowInsecureHttp: Boolean = false) {
+        if (!allowInsecureHttp && (requiresHttpSubscriptionConsent(configText) ||
+                requiresHttpSubscriptionConsent(Utils.decode(configText)))) {
+            _uiState.update { it.copy(pendingHttpImport = configText) }
+            return
+        }
+        _uiState.update { it.copy(pendingHttpImport = null) }
         launchLoading {
             withContext(ioDispatcher) {
                 try {
                     val result = dataSource.importBatchConfig(
-                        configText, AppConfig.DEFAULT_SUBSCRIPTION_ID, true
+                        configText, AppConfig.DEFAULT_SUBSCRIPTION_ID, true, allowInsecureHttp,
                     )
                     when {
                         result.configCount > 0 -> {
@@ -743,35 +762,28 @@ class MainViewModel(
 
     fun updateSelectedGuid(guid: String) {
         dataSource.setSelectServer(guid)
-        val profile = dataSource.decodeServerConfig(guid)
-        _uiState.update {
-            it.copy(
-                selectedGuid = guid,
-                selectedServerName = profile?.remarks.orEmpty(),
-                selectedServerAddress = profile?.getServerAddressAndPort().orEmpty(),
-            )
-        }
+        refreshSelectedGuid()
     }
 
     fun refreshSelectedGuid() {
         val guid = dataSource.getSelectServer()
         val profile = guid?.let(dataSource::decodeServerConfig)
+        val delay = guid?.let(dataSource::decodeAffiliationInfo)?.testDelayMillis?.takeIf { it != 0L }
         _uiState.update {
             it.copy(
                 selectedGuid = guid,
                 selectedServerName = profile?.remarks.orEmpty(),
                 selectedServerAddress = profile?.getServerAddressAndPort().orEmpty(),
+                selectedServerProtocol = profile?.configType?.name.orEmpty(),
+                selectedServerDelayMillis = delay,
             )
         }
     }
 
     fun removeServerAndRefresh(guid: String) {
-        if (guid == uiState.value.selectedGuid) {
-            toast(R.string.toast_action_not_allowed)
-            return
-        }
         viewModelScope.launch(ioDispatcher) {
             dataSource.removeServer(guid)
+            refreshSelectedGuid()
             cacheMutex.withLock { groupDataCache.clear() }
             setupGroupTab(forceRefresh = true).join()
         }
@@ -803,7 +815,7 @@ class MainViewModel(
         }
     }
 
-    fun testAllRealPing(onlyTcp: Boolean = false) {
+    fun testAllRealPing(onlyTcp: Boolean = false, pingOnly: Boolean = false) {
         dataSource.cancelAllPing()
         val groupId = uiState.value.selectedGroupId
         val servers = currentServers()
@@ -826,7 +838,8 @@ class MainViewModel(
                     key = AppConfig.MSG_MEASURE_CONFIG_START,
                     subscriptionId = groupId,
                     serverGuids = if (keywordFilter.isNotEmpty()) servers.map { it.guid } else emptyList(),
-                    onlyTcp = onlyTcp
+                    onlyTcp = onlyTcp,
+                    pingOnly = pingOnly,
                 )
             )
         }
@@ -858,13 +871,15 @@ class MainViewModel(
     fun triggerLocateSelectedServer() {
         val selected = dataSource.getSelectServer() ?: return
         val profile = dataSource.decodeServerConfig(selected) ?: return
-        val groupId = profile.subscriptionId
+        val groupId = if (_uiState.value.groups.any { it.id.isEmpty() }) "" else
+            profile.subscriptionId.ifBlank { AppConfig.DEFAULT_SUBSCRIPTION_ID }
         val groupIndex =
             _uiState.value.groups.indexOfFirst { it.id == groupId }.takeIf { it >= 0 } ?: return
         viewModelScope.launch(ioDispatcher) {
-            val position =
-                loadGroup(groupId).indexOfFirst { it.guid == selected }.takeIf { it >= 0 }
-                    ?: return@launch
+            keywordFilter = ""
+            val servers = loadGroup(groupId)
+            val position = servers.indexOfFirst { it.guid == selected }.takeIf { it >= 0 } ?: return@launch
+            updateGroupUi(groupId, servers)
             _uiState.update {
                 it.copy(locateTarget = LocateTarget(groupId, groupIndex, position))
             }

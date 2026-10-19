@@ -52,8 +52,8 @@ object RootProxyManager {
         "::1/128", "fe80::/10", "fc00::/7", "ff00::/8"
     )
 
-    fun start(context: Context): Boolean {
-        teardown(context)
+    fun start(context: Context, cleanupBeforeStart: Boolean = true): Boolean {
+        if (cleanupBeforeStart) teardown(context)
         val script = if (SettingsManager.isTProxyMode()) {
             buildTProxySetup(context) ?: return false
         } else {
@@ -115,12 +115,24 @@ object RootProxyManager {
         ).distinct()
         val script = buildString {
             appendLine("command -v curl >/dev/null 2>&1 || exit 0")
-            for (url in urls) {
+            val runDir = File(context.filesDir, AppConfig.ROOT_RUNTIME_DIR).absolutePath.replace("'", "'\\''")
+            appendLine("PROBE_DIR=\$(mktemp -d '$runDir/probe.XXXXXX') || exit 1")
+            appendLine("PROBE_PIDS=''")
+            for (url in urls.take(2)) {
                 val safeUrl = url.replace("'", "'\\''")
-                appendLine("curl -4 -fsS -o /dev/null --connect-timeout 6 --max-time 12 '$safeUrl' && exit 0")
+                appendLine("(curl -4 -fsS -o /dev/null --connect-timeout 3 --max-time 5 '$safeUrl' && touch \"\$PROBE_DIR/ok\") >/dev/null 2>&1 &")
+                appendLine("PROBE_PIDS=\"\$PROBE_PIDS \$!\"")
             }
-            appendLine("echo 'Root proxy data path is not reachable'")
-            appendLine("exit 1")
+            appendLine("i=0; while [ \$i -lt 55 ] && [ ! -f \"\$PROBE_DIR/ok\" ]; do")
+            appendLine("  alive=0; for p in \$PROBE_PIDS; do kill -0 \$p 2>/dev/null && alive=1; done")
+            appendLine("  [ \$alive -eq 1 ] || break")
+            appendLine("  sleep 0.1; i=\$((i+1))")
+            appendLine("done")
+            appendLine("status=1; [ -f \"\$PROBE_DIR/ok\" ] && status=0")
+            appendLine("for p in \$PROBE_PIDS; do kill \$p 2>/dev/null || true; done")
+            appendLine("rm -f \"\$PROBE_DIR/ok\"; rmdir \"\$PROBE_DIR\" 2>/dev/null || true")
+            appendLine("[ \$status -eq 0 ] || echo 'Root proxy data path is not reachable'")
+            appendLine("exit \$status")
         }
         val result = RootShell.runScript(context, "verify_data_path.sh", script)
         if (!result.success) {
@@ -212,7 +224,7 @@ object RootProxyManager {
             appendLine("TPROXY_PID=\$!")
             appendLine("echo \$TPROXY_PID > '$pidFile'")
             appendLine("echo ${AppConfig.ROOT_OOM_SCORE} > /proc/\$TPROXY_PID/oom_score_adj 2>/dev/null || true")
-            appendLine("i=0; while [ \$i -lt 20 ]; do ss -lnptu 2>/dev/null | grep -q ':${AppConfig.ROOT_TPROXY_PORT} ' && break; kill -0 \$TPROXY_PID 2>/dev/null || break; sleep 0.2; i=\$((i+1)); done")
+            appendLine("i=0; while [ \$i -lt 80 ]; do ss -lnptu 2>/dev/null | grep -q ':${AppConfig.ROOT_TPROXY_PORT} ' && break; kill -0 \$TPROXY_PID 2>/dev/null || break; sleep 0.05; i=\$((i+1)); done")
             appendLine("ss -lnptu 2>/dev/null | grep -q ':${AppConfig.ROOT_TPROXY_PORT} ' || { echo 'TProxy helper did not start'; cat '$logFile' 2>/dev/null; exit 1; }")
             appendLine("nohup sh -c 'while true; do echo ${AppConfig.ROOT_OOM_SCORE} > /proc/$corePid/oom_score_adj 2>/dev/null; sleep $OOM_GUARD_INTERVAL_SECONDS; done' >/dev/null 2>&1 &")
             appendLine("echo \$! > '$oomGuardPid'")
@@ -343,7 +355,7 @@ object RootProxyManager {
             appendLine("echo \$T2S_PID > '$pidFile'")
             appendLine("echo ${AppConfig.ROOT_OOM_SCORE} > /proc/\$T2S_PID/oom_score_adj 2>/dev/null || true")
             // wait for the interface hev creates to appear
-            appendLine("i=0; while [ \$i -lt 20 ]; do ip link show $TUN >/dev/null 2>&1 && break; sleep 0.3; i=\$((i+1)); done")
+            appendLine("i=0; while [ \$i -lt 120 ]; do ip link show $TUN >/dev/null 2>&1 && break; kill -0 \$T2S_PID 2>/dev/null || break; sleep 0.05; i=\$((i+1)); done")
             appendLine("ip link show $TUN >/dev/null 2>&1 || { echo 'tun device did not come up'; cat '$logFile' 2>/dev/null; exit 1; }")
             // relax reverse-path filtering for the tun
             appendLine("echo 0 > /proc/sys/net/ipv4/conf/$TUN/rp_filter 2>/dev/null || true")
@@ -391,9 +403,9 @@ object RootProxyManager {
     /** Wait until the in-process core can accept helper connections. */
     private fun waitForSocksListener(port: Int): String = buildString {
         appendLine("i=0")
-        appendLine("while [ \$i -lt 30 ]; do")
+        appendLine("while [ \$i -lt 120 ]; do")
         appendLine("  ss -lnt 2>/dev/null | grep -q ':$port ' && break")
-        appendLine("  sleep 0.2")
+        appendLine("  sleep 0.05")
         appendLine("  i=\$((i+1))")
         appendLine("done")
         appendLine("ss -lnt 2>/dev/null | grep -q ':$port ' || { echo 'Core SOCKS listener did not become ready on port $port'; exit 1; }")

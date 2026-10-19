@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_traffic_information">流量信息</string>
+    <string name="home_runtime_status">运行状态</string>
+    <string name="subscription_http_import_title">导入 HTTP 订阅</string>
+    <string name="subscription_http_import_message">此内容包含未加密的 HTTP 订阅。是否允许本次导入的 HTTP 地址，并继续导入节点？</string>
+    <string name="subscription_http_import_confirm">继续导入</string>
+</resources>

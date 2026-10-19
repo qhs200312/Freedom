@@ -10,6 +10,7 @@ import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.core.CoreNativeManager
 import com.v2ray.ang.core.RuntimeCore
+import com.v2ray.ang.core.runtime.XrayOutboundBridges
 import com.v2ray.ang.core.runtime.CoreRuntime
 import com.v2ray.ang.dto.OutboundTrafficStat
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -38,8 +39,10 @@ internal class XrayRuntime(
     private var monitor: NetworkMonitor? = null
     private var guard: OemConnectionGuard? = null
     private var dialer: IDialerService? = null
+    private var bridges: XrayOutboundBridges? = null
+    private var trafficBindings = emptyMap<String, com.v2ray.ang.dto.NodeTrafficBinding>()
     @Volatile private var stopping = false
-    override val isRunning: Boolean get() = controller?.isRunning == true
+    override val isRunning: Boolean get() = controller?.isRunning == true && bridges?.isAlive != false
 
     @Synchronized
     override fun start() {
@@ -56,12 +59,17 @@ internal class XrayRuntime(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             core.registerProcessFinder(XrayProcessFinder(service))
         }
-        val config = CoreConfigManager.getV2rayConfig(service, guid)
+        val bridges = XrayOutboundBridges(service, control::vpnProtect) {
+            if (!stopping) recover()
+        }.also { this.bridges = it }
+        val config = CoreConfigManager.getV2rayConfig(service, guid, bridges::prepare)
         check(config.status) { config.errorMessage.ifBlank { "Invalid Xray configuration" } }
+        trafficBindings = config.trafficBindings
         val dialerMode = BrowserDialerMode.from(profile.browserDialerMode)
         val dialerAddress = if (dialerMode != null) "127.0.0.1:${Utils.findRandomFreePort()}" else ""
         CoreNativeManager.reconcileBrowserDialer(dialerAddress)
         core.startLoop(config.content, tun?.fd ?: 0)
+        check(bridges.isAlive) { "A local outbound bridge stopped during core startup" }
         dialer = when (dialerMode) {
             BrowserDialerMode.OKHTTP -> DialerNativeService()
             BrowserDialerMode.WEBVIEW -> DialerWebviewService()
@@ -99,6 +107,8 @@ internal class XrayRuntime(
             controller?.callbackHandler = null
             controller?.registerProcessFinder(null)
             controller = null
+            bridges?.close()
+            bridges = null
             dialer?.stop()
             dialer = null
             CoreNativeManager.reconcileBrowserDialer("")
@@ -114,7 +124,9 @@ internal class XrayRuntime(
             val fields = entry.split(',', limit = 3)
             if (fields.size != 3) return@mapNotNull null
             val value = fields[2].toLongOrNull() ?: return@mapNotNull null
-            OutboundTrafficStat(fields[0], fields[1], value)
+            val binding = trafficBindings[fields[0]]
+            OutboundTrafficStat(fields[0], fields[1], value,
+                binding?.profileIds.orEmpty(), binding?.countInTotal ?: true)
         }
 
     override fun onScreenOn() { guard?.onScreenOn() }

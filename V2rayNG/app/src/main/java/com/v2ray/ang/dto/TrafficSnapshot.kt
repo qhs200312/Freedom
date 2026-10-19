@@ -11,6 +11,7 @@ data class TrafficSnapshot(
     val sessionDownlink: Long = 0L,
     val totalUplink: Long = 0L,
     val totalDownlink: Long = 0L,
+    val nodeTotals: Map<String, NodeTrafficTotal> = emptyMap(),
 ) : Serializable {
     val uplinkSpeed: Long get() = proxyUplinkSpeed + directUplinkSpeed
     val downlinkSpeed: Long get() = proxyDownlinkSpeed + directDownlinkSpeed

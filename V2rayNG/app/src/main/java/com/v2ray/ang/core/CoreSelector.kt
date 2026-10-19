@@ -6,6 +6,7 @@ import com.v2ray.ang.dto.NodeProfile
 import com.v2ray.ang.dto.PreferredCore
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.fmt.AnyTlsFmt
 
 enum class RuntimeCore {
     XRAY,
@@ -45,6 +46,8 @@ object CoreSelector {
         profile: NodeProfile,
         protocolDefaultCore: PreferredCore = builtInDefault(profile.protocol),
     ): RuntimeCore {
+        if (profile.protocol == EConfigType.NOWHERE) return RuntimeCore.XRAY
+        if (profile.protocol == EConfigType.ANYTLS) return RuntimeCore.SING_BOX
         return when (profile.preferredCore) {
             PreferredCore.XRAY -> RuntimeCore.XRAY
             PreferredCore.SING_BOX ->
@@ -63,12 +66,19 @@ object CoreSelector {
     }
 
     fun canGenerateSingBox(profile: NodeProfile): Boolean {
-        if (profile.protocol !in configurableProtocols) return false
+        if (profile.protocol !in configurableProtocols && profile.protocol != EConfigType.ANYTLS) return false
         if (profile.server.isBlank() || profile.port !in 1..65535) return false
         if (!profile.pinnedCertificateSha256.isNullOrBlank()) return false
         if (!profile.verifyPeerCertByName.isNullOrBlank()) return false
         if (!profile.browserDialerMode.isNullOrBlank()) return false
         if (!profile.xrayFinalMask.isNullOrBlank() && profile.protocol != EConfigType.HYSTERIA2) return false
+        if (profile.protocol == EConfigType.ANYTLS) {
+            return !profile.password.isNullOrBlank() && profile.tlsEnabled &&
+                (profile.security.isNullOrBlank() || profile.security.equals(AppConfig.TLS, true)) &&
+                AnyTlsFmt.validDuration(profile.anytlsIdleSessionCheckInterval) &&
+                AnyTlsFmt.validDuration(profile.anytlsIdleSessionTimeout) &&
+                (profile.anytlsMinIdleSession == null || profile.anytlsMinIdleSession >= 0)
+        }
 
         if (profile.protocol == EConfigType.WIREGUARD) {
             return !profile.wireGuardPrivateKey.isNullOrBlank() &&

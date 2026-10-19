@@ -75,6 +75,14 @@ fun ImportMenuContent(
         onClick = { onAction(MainAction.ImportManually(EConfigType.HTTP.value)) }
     )
     DropdownMenuItem(
+        text = { Text(stringResource(R.string.menu_item_import_config_manually_nowhere)) },
+        onClick = { onAction(MainAction.ImportManually(EConfigType.NOWHERE.value)) }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.menu_item_import_config_manually_anytls)) },
+        onClick = { onAction(MainAction.ImportManually(EConfigType.ANYTLS.value)) }
+    )
+    DropdownMenuItem(
         text = { Text(stringResource(R.string.menu_item_import_config_manually_trojan)) },
         onClick = { onAction(MainAction.ImportManually(EConfigType.TROJAN.value)) }
     )
@@ -100,7 +108,7 @@ fun MoreMenuContent(
         onClick = { onAction(MainAction.RestartService) }
     )
     DropdownMenuItem(
-        text = { Text(stringResource(R.string.title_del_all_config)) },
+        text = { Text(stringResource(R.string.title_delete_selected_profile)) },
         onClick = onDelAllConfig
     )
     DropdownMenuItem(
@@ -112,11 +120,15 @@ fun MoreMenuContent(
         onClick = onDelInvalidConfig
     )
     DropdownMenuItem(
-        text = { Text(stringResource(R.string.title_export_all)) },
+        text = { Text(stringResource(R.string.title_export_selected_profile)) },
+        onClick = { onAction(MainAction.ExportSelected) }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.title_export_all_profiles)) },
         onClick = { onAction(MainAction.ExportAll) }
     )
     DropdownMenuItem(
-        text = { Text(stringResource(R.string.title_locate_selected_config)) },
+        text = { Text(stringResource(R.string.title_find_selected_profile)) },
         onClick = { onAction(MainAction.LocateSelectedServer) }
     )
     DropdownMenuItem(
@@ -124,7 +136,7 @@ fun MoreMenuContent(
         onClick = { onAction(MainAction.SortByTestResults) }
     )
     DropdownMenuItem(
-        text = { Text(stringResource(R.string.title_ping_all_server)) },
+        text = { Text(stringResource(R.string.title_ping_profiles)) },
         onClick = { onAction(MainAction.TestAllServers) }
     )
     DropdownMenuItem(

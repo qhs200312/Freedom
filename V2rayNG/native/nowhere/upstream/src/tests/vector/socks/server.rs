@@ -1,0 +1,156 @@
+// Copyright (C) 2026 NodePassProject <https://github.com/NodePassProject>
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! SOCKS5 client admission, listener shutdown, and CONNECT setup cancellation tests.
+
+use super::*;
+use crate::common::Logger;
+use crate::vector::ForwardVector as Vector;
+use std::time::Duration;
+use tokio::io::AsyncWriteExt;
+use url::Url;
+
+#[test]
+fn socks_client_resource_admission_is_process_wide_and_reusable() {
+    let vector = Vector::new(
+        Url::parse("vector://0123456789abcdef0123456789abcdef@127.0.0.1:2000?in=127.0.0.1:1080")
+            .unwrap(),
+        Logger,
+    )
+    .unwrap();
+    let limit = vector.inner.socks_client_admission.available_permits();
+    let mut held = (0..limit)
+        .map(|_| try_admit_client(&vector.inner).unwrap())
+        .collect::<Vec<_>>();
+    assert!(try_admit_client(&vector.inner).is_none());
+
+    held.pop();
+    assert!(try_admit_client(&vector.inner).is_some());
+}
+
+#[tokio::test]
+async fn listener_shutdown_interrupts_idle_socks_handshake() {
+    let vector = Vector::new(
+        Url::parse("vector://0123456789abcdef0123456789abcdef@127.0.0.1:9?in=127.0.0.1:1080")
+            .unwrap(),
+        Logger,
+    )
+    .unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let admission = vector.inner.socks_client_admission.clone();
+    let full = admission.available_permits();
+    let serving = tokio::spawn(serve_listener(
+        vector.inner.clone(),
+        listener,
+        shutdown.clone(),
+    ));
+    let _client = TcpStream::connect(endpoint).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while admission.available_permits() == full {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+
+    shutdown.cancel();
+
+    tokio::time::timeout(Duration::from_millis(500), serving)
+        .await
+        .expect("listener stayed blocked on idle SOCKS handshake")
+        .unwrap();
+    assert_eq!(admission.available_permits(), full);
+}
+
+#[tokio::test]
+async fn client_shutdown_interrupts_pending_connect_setup() {
+    let portal = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let portal_addr = portal.local_addr().unwrap();
+    let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+    let portal_task = tokio::spawn(async move {
+        let (stream, _) = portal.accept().await.unwrap();
+        let _ = accepted_tx.send(());
+        let _stream = stream;
+        std::future::pending::<()>().await;
+    });
+    let vector = Vector::new(
+        Url::parse(&format!(
+            "vector://0123456789abcdef0123456789abcdef@{portal_addr}?in=127.0.0.1:1080"
+        ))
+        .unwrap(),
+        Logger,
+    )
+    .unwrap();
+    let controls = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let connecting = TcpStream::connect(controls.local_addr().unwrap());
+    let (accepted, client) = tokio::join!(controls.accept(), connecting);
+    let (server, peer) = accepted.unwrap();
+    let mut client = client.unwrap();
+    let shutdown = CancellationToken::new();
+    let handling = tokio::spawn(handle_client(
+        vector.inner.clone(),
+        server,
+        peer,
+        shutdown.clone(),
+    ));
+    client.write_all(&[5, 1, 0]).await.unwrap();
+    let mut greeting = [0; 2];
+    client.read_exact(&mut greeting).await.unwrap();
+    assert_eq!(greeting, [5, 0]);
+    client
+        .write_all(&[5, COMMAND_CONNECT, 0, 1, 192, 0, 2, 1, 0, 80])
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), accepted_rx)
+        .await
+        .unwrap()
+        .unwrap();
+
+    shutdown.cancel();
+
+    tokio::time::timeout(Duration::from_millis(500), handling)
+        .await
+        .expect("SOCKS client stayed blocked on Portal setup")
+        .unwrap()
+        .unwrap();
+    portal_task.abort();
+}
+
+#[tokio::test]
+async fn invalid_tcp_target_does_not_publish_access() {
+    let vector = Vector::new(
+        Url::parse("vector://0123456789abcdef0123456789abcdef@127.0.0.1:2000?in=127.0.0.1:1080")
+            .unwrap(),
+        Logger,
+    )
+    .unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut client = TcpStream::connect(listener.local_addr().unwrap())
+        .await
+        .unwrap();
+    let (server, peer) = listener.accept().await.unwrap();
+    let handling = tokio::spawn(handle_client(
+        vector.inner.clone(),
+        server,
+        peer,
+        CancellationToken::new(),
+    ));
+    client.write_all(&[5, 1, 0]).await.unwrap();
+    let mut greeting = [0; 2];
+    client.read_exact(&mut greeting).await.unwrap();
+    assert_eq!(greeting, [5, 0]);
+    client
+        .write_all(&[5, COMMAND_CONNECT, 0, 3, 4, b'-', b'b', b'a', b'd', 0, 80])
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(1), handling)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err()
+    );
+}

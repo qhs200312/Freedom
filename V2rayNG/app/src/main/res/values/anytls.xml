@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="menu_item_import_config_manually_anytls">Add [AnyTLS]</string>
+    <string name="anytls_idle_check_interval">Idle session check interval (30s)</string>
+    <string name="anytls_idle_timeout">Idle session timeout (30s)</string>
+    <string name="anytls_min_idle_session">Minimum idle sessions (0)</string>
+    <string name="anytls_client_metadata">Client metadata</string>
+    <string name="anytls_invalid_settings">Check the password, port and idle session settings. Durations use units such as 30s or 1m.</string>
+</resources>

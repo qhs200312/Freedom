@@ -24,6 +24,7 @@ import com.v2ray.ang.enums.ProxyMode
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
+import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
@@ -33,7 +34,6 @@ import com.v2ray.ang.service.CoreWarmupService
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
-import com.v2ray.ang.ui.logcat.LogcatActivity
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
 import com.v2ray.ang.ui.routing.RoutingSettingActivity
 import com.v2ray.ang.ui.server.ProfileEditorResult
@@ -44,6 +44,8 @@ import com.v2ray.ang.ui.server.ServerHysteria2Activity
 import com.v2ray.ang.ui.server.ServerProxyChainActivity
 import com.v2ray.ang.ui.server.ServerShadowsocksActivity
 import com.v2ray.ang.ui.server.ServerSocksActivity
+import com.v2ray.ang.ui.server.ServerNowhereActivity
+import com.v2ray.ang.ui.server.ServerAnyTlsActivity
 import com.v2ray.ang.ui.server.ServerTrojanActivity
 import com.v2ray.ang.ui.server.ServerVlessActivity
 import com.v2ray.ang.ui.server.ServerVmessActivity
@@ -153,6 +155,23 @@ class MainActivity : HelperBaseComponentActivity() {
                     is MainAction.EditServer -> editServer(action.guid, action.profile)
                     is MainAction.ShareClipboard -> shareToClipboard(action.guid)
                     is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
+                    MainAction.ExportSelected -> {
+                        val guid = mainViewModel.uiState.value.selectedGuid
+                        val profile = guid?.let(MmkvManager::decodeServerConfig)
+                        if (guid == null || profile == null) toastError(R.string.home_no_server)
+                        else if (profile.configType.isComplexType() || profile.configType == EConfigType.HTTP) shareFullContentAsync(guid)
+                        else shareToClipboard(guid)
+                    }
+                    MainAction.ExportAll -> settingsActivityLauncher.launch(
+                        Intent(this, BackupActivity::class.java).putExtra(BackupActivity.EXTRA_EXPORT_ALL, true)
+                    )
+                    is MainAction.RemoveServer -> {
+                        val state = mainViewModel.uiState.value
+                        if (action.guid == state.selectedGuid && (state.isRunning || state.isStarting)) {
+                            LauncherManager.stopService(this)
+                        }
+                        mainViewModel.onAction(action)
+                    }
                     else -> mainViewModel.onAction(action)
                 }
             },
@@ -180,7 +199,6 @@ class MainActivity : HelperBaseComponentActivity() {
             "routing_setting" -> Intent(this, RoutingSettingActivity::class.java)
             "user_asset" -> Intent(this, UserAssetActivity::class.java)
             "settings" -> Intent(this, SettingsActivity::class.java)
-            "logcat" -> Intent(this, LogcatActivity::class.java)
             "check_update" -> Intent(this, CheckUpdateActivity::class.java)
             "backup_restore" -> Intent(this, BackupActivity::class.java)
             "promotion" -> {
@@ -270,6 +288,8 @@ class MainActivity : HelperBaseComponentActivity() {
             EConfigType.VLESS.value -> Intent(this, ServerVlessActivity::class.java)
             EConfigType.SHADOWSOCKS.value -> Intent(this, ServerShadowsocksActivity::class.java)
             EConfigType.SOCKS.value -> Intent(this, ServerSocksActivity::class.java)
+            EConfigType.NOWHERE.value -> Intent(this, ServerNowhereActivity::class.java)
+            EConfigType.ANYTLS.value -> Intent(this, ServerAnyTlsActivity::class.java)
             EConfigType.HTTP.value -> Intent(this, ServerHttpActivity::class.java)
             EConfigType.TROJAN.value -> Intent(this, ServerTrojanActivity::class.java)
             EConfigType.WIREGUARD.value -> Intent(this, ServerWireguardActivity::class.java)
@@ -322,6 +342,8 @@ class MainActivity : HelperBaseComponentActivity() {
             EConfigType.VLESS -> ServerVlessActivity::class.java
             EConfigType.SHADOWSOCKS -> ServerShadowsocksActivity::class.java
             EConfigType.SOCKS -> ServerSocksActivity::class.java
+            EConfigType.NOWHERE -> ServerNowhereActivity::class.java
+            EConfigType.ANYTLS -> ServerAnyTlsActivity::class.java
             EConfigType.HTTP -> ServerHttpActivity::class.java
             EConfigType.TROJAN -> ServerTrojanActivity::class.java
             EConfigType.WIREGUARD -> ServerWireguardActivity::class.java

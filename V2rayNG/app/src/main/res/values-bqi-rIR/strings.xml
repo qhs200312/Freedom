@@ -296,10 +296,6 @@
     <string name="title_root_lan_sharing">یک رسۊوی LAN / تترینگ (منتورووݩ رۊت وابیڌه)</string>
     <string name="summary_root_lan_sharing">ترافیک هات‌اسپات وای‌فای وو دسگا یل منپیز وابیڌه وا USB (تترینگ) ن ز تور VPN بفشنین.</string>
 
-    <string name="title_logcat">گوزارشا</string>
-    <string name="logcat_copy">لف گیری</string>
-    <string name="logcat_clear">روفتن</string>
-    <string name="logcat_share">یک رسۊوی گوزارش</string>
     <string name="title_service_restart">ره وندن دووارته سرویس</string>
     <string name="title_del_all_config">پاک کردن پوی کانفیگا بونکۊ سکویی</string>
     <string name="title_del_duplicate_config">پاک کردن کانفیگا تکراری بونکۊ سکویی</string>

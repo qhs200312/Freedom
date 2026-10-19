@@ -36,19 +36,23 @@ object NotificationManager {
     private var mBuilder: NotificationCompat.Builder? = null
     private var speedNotificationJob: Job? = null
     private var mNotificationManager: NotificationManager? = null
+    private var notificationGeneration = 0L
 
     /**
      * Starts the speed notification.
      * @param currentConfig The current profile configuration.
      */
+    @Synchronized
     fun startSpeedNotification() {
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED, true) == false) return
         if (speedNotificationJob != null || CoreServiceManager.isRunning() == false) return
 
+        val generation = ++notificationGeneration
         var lastZeroSpeed = false
 
         speedNotificationJob = CoroutineScope(Dispatchers.IO).launch {
             TrafficStatsManager.snapshot.collect { snapshot ->
+                if (generation != notificationGeneration || !CoreServiceManager.isRunning()) return@collect
                 lastZeroSpeed = updateSpeedNotificationOnce(
                     snapshot,
                     lastZeroSpeed,
@@ -178,6 +182,7 @@ object NotificationManager {
         // can repost the notification immediately after stopForeground removes it.
         speedNotificationJob?.cancel()
         speedNotificationJob = null
+        notificationGeneration++
         mBuilder = null
 
         try {
@@ -202,12 +207,13 @@ object NotificationManager {
     /**
      * Stops the speed notification.
      */
+    @Synchronized
     fun stopSpeedNotification() {
         speedNotificationJob?.let {
             it.cancel()
             speedNotificationJob = null
-            updateNotification("", "", 0, 0)
         }
+        notificationGeneration++
     }
 
     /**

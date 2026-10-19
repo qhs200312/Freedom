@@ -1,17 +1,20 @@
 package com.v2ray.ang.ui.main
 
+import android.os.SystemClock
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +30,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,48 +40,54 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.v2ray.ang.R
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.highlight.HighlightStyle
+import com.kyant.backdrop.shadow.InnerShadow
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 internal enum class MainDestination(
     @StringRes val labelRes: Int,
@@ -92,6 +103,8 @@ internal val MainNavigationContentClearance = 84.dp
 private val NavigationShape = RoundedCornerShape(percent = 50)
 private val IndicatorShape = RoundedCornerShape(percent = 50)
 private val NavigationBackgroundHorizontalInset = 20.dp
+private val NavigationHorizontalInset = 18.dp
+private val GlassScreenEdgeInset = 8.dp
 private val IndicatorEdgeInset = 4.dp
 
 @Composable
@@ -104,15 +117,38 @@ internal fun MainBottomNavigation(
     val destinations = MainDestination.entries
     val selectedIndex = selectedDestination.ordinal
     val darkTheme = LocalDarkTheme.current
+    val restingGlassColor = if (darkTheme) Color(0xFF343439) else Color(0xFFE9E9EC)
+    val movingGlassColor = MaterialTheme.colorScheme.surface
+    val navigationTint = MaterialTheme.colorScheme.surface.copy(
+        alpha = if (darkTheme) 0.12f else 0.14f,
+    )
     val density = LocalDensity.current
-    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val motionDurationScale = scope.coroutineContext[MotionDurationScale]
+    val reduceMotion = motionDurationScale?.scaleFactor == 0f
+    val latestOnDestinationSelected by rememberUpdatedState(onDestinationSelected)
+    val latestSelectedIndex by rememberUpdatedState(selectedIndex)
+    val latestReduceMotion by rememberUpdatedState(reduceMotion)
+    val interactions = remember { destinations.map { MutableInteractionSource() } }
+    val pressedStates = interactions.map { it.collectIsPressedAsState() }
+    val focusedStates = interactions.map { it.collectIsFocusedAsState() }
+    val pressedIndex = pressedStates.indexOfFirst { it.value }
     val navigationItemsBackdrop = rememberLayerBackdrop()
 
-    var isDragging by remember { mutableStateOf(false) }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-    var dragVelocityPxPerSecond by remember { mutableFloatStateOf(0f) }
-    var lastDragEventNanos by remember { mutableLongStateOf(0L) }
-    var pressedIndex by remember { mutableIntStateOf(-1) }
+    val motion = remember { NavigationLensMotionState(scope, 0f) }
+    val isDragging = motion.isDragging
+    var dragDistancePx by remember { mutableFloatStateOf(0f) }
+    var dragSpeedRatio by remember { mutableFloatStateOf(0f) }
+    var lastDragEventTime by remember { mutableLongStateOf(0L) }
+    val dragVelocityTracker = remember { VelocityTracker() }
+    LaunchedEffect(isDragging) {
+        while (isDragging) {
+            withFrameNanos { }
+            if (SystemClock.uptimeMillis() - lastDragEventTime > 70L) {
+                dragSpeedRatio = (dragSpeedRatio * 0.8f).let { if (it < 0.001f) 0f else it }
+            }
+        }
+    }
     val glassBorder = Brush.verticalGradient(
         colors = listOf(
             Color.White.copy(alpha = if (darkTheme) 0.24f else 0.62f),
@@ -124,7 +160,11 @@ internal fun MainBottomNavigation(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(start = 18.dp, end = 18.dp, bottom = 10.dp),
+            .padding(
+                start = NavigationHorizontalInset,
+                end = NavigationHorizontalInset,
+                bottom = 10.dp,
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -148,10 +188,10 @@ internal fun MainBottomNavigation(
                             shape = { NavigationShape },
                             effects = {
                                 vibrancy()
-                                blur(6.dp.toPx())
+                                blur(5.dp.toPx())
                                 lens(10.dp.toPx(), 16.dp.toPx())
                             },
-                            onDrawSurface = { },
+                            onDrawSurface = { drawRect(navigationTint) },
                         )
                         .border(1.dp, glassBorder, NavigationShape),
                 )
@@ -162,32 +202,104 @@ internal fun MainBottomNavigation(
                     .padding(horizontal = NavigationBackgroundHorizontalInset)
                     .fillMaxSize(),
             ) {
+                val trackWidthPx = with(density) { maxWidth.toPx() }
+                val trackHeightPx = with(density) { maxHeight.toPx() }
                 val itemWidth = maxWidth / destinations.size
                 val itemWidthPx = with(density) { itemWidth.toPx() }
+                val latestItemWidthPx by rememberUpdatedState(itemWidthPx)
                 val indicatorHorizontalInset = IndicatorEdgeInset
                 val indicatorWidth = (itemWidth - indicatorHorizontalInset * 2f)
-                    .coerceAtLeast(72.dp)
+                    .coerceAtLeast(0.dp)
                 val indicatorWidthPx = with(density) { indicatorWidth.toPx() }
-                val maxDragOffsetPx = itemWidthPx * destinations.lastIndex
                 val restingOffsetPx = selectedIndex * itemWidthPx
-                val animatedIndicatorOffset = remember(itemWidthPx) {
-                    Animatable(restingOffsetPx)
+                LaunchedEffect(itemWidthPx) {
+                    motion.snapTo(latestSelectedIndex * itemWidthPx)
                 }
-                LaunchedEffect(restingOffsetPx) {
-                    if (
-                        !isDragging &&
-                        animatedIndicatorOffset.targetValue != restingOffsetPx
-                    ) {
-                        animatedIndicatorOffset.animateTo(
-                            targetValue = restingOffsetPx,
-                            animationSpec = spring(dampingRatio = 0.62f, stiffness = 500f),
-                        )
+                LaunchedEffect(restingOffsetPx, reduceMotion) {
+                    if (!motion.isDragging) {
+                        motion.settleTo(restingOffsetPx, reduceMotion)
                     }
                 }
-                val indicatorOffsetPx = if (isDragging) {
-                    dragOffsetPx
-                } else {
-                    animatedIndicatorOffset.value
+                val indicatorHorizontalInsetPx = with(density) {
+                    indicatorHorizontalInset.toPx()
+                }
+                val stretchVelocityPxPerSecond = with(density) { 2200.dp.toPx() }
+                val indicatorPressed = pressedIndex == selectedIndex
+                val reflectionProgress by animateFloatAsState(
+                    targetValue = if (isDragging || indicatorPressed) 1f else 0f,
+                    animationSpec = tween(
+                        durationMillis = if (isDragging || indicatorPressed) 280 else 200,
+                        easing = NavigationMaterialEasing,
+                    ),
+                    label = "bottomNavigationReflectionProgress",
+                )
+                val refractionProgress by animateFloatAsState(
+                    targetValue = when {
+                        isDragging -> 1f
+                        indicatorPressed -> 0.18f
+                        else -> 0f
+                    },
+                    animationSpec = tween(
+                        durationMillis = if (isDragging || indicatorPressed) 280 else 200,
+                        easing = NavigationMaterialEasing,
+                    ),
+                    label = "bottomNavigationRefractionProgress",
+                )
+                val stretch = navigationLensStretch(
+                    isDragging && !reduceMotion, indicatorPressed && !reduceMotion, dragSpeedRatio,
+                )
+                val indicatorScaleX by animateFloatAsState(
+                    targetValue = stretch.scaleX,
+                    animationSpec = spring(NavigationSpringDamping, NavigationSpringStiffness),
+                    label = "bottomNavigationIndicatorScaleX",
+                )
+                val indicatorScaleY by animateFloatAsState(
+                    targetValue = stretch.scaleY,
+                    animationSpec = spring(NavigationSpringDamping, NavigationSpringStiffness),
+                    label = "bottomNavigationIndicatorScaleY",
+                )
+                val indicatorVerticalInset by animateDpAsState(
+                    targetValue = when {
+                        reduceMotion -> IndicatorEdgeInset
+                        isDragging -> 0.dp
+                        pressedIndex == selectedIndex -> 2.dp
+                        else -> IndicatorEdgeInset
+                    },
+                    animationSpec = spring(NavigationSpringDamping, NavigationSpringStiffness),
+                    label = "bottomNavigationIndicatorVerticalInset",
+                )
+                val glassScaleX = indicatorScaleX.coerceIn(0.94f, 1.46f)
+                val glassScaleY = indicatorScaleY.coerceIn(0.94f, 1.3f)
+                val glassVerticalInset = indicatorVerticalInset.coerceAtLeast(0.dp)
+                val lensGeometry = with(density) {
+                    NavigationLensGeometry(
+                        trackWidth = maxWidth.toPx(),
+                        trackHeight = maxHeight.toPx(),
+                        lensWidth = indicatorWidthPx,
+                        verticalInset = glassVerticalInset.toPx(),
+                        scaleX = glassScaleX,
+                        scaleY = glassScaleY,
+                        restingInset = indicatorHorizontalInsetPx,
+                        edgeOutset = (
+                            NavigationBackgroundHorizontalInset +
+                                NavigationHorizontalInset - GlassScreenEdgeInset
+                            ).toPx(),
+                    )
+                }
+                val latestLensGeometry by rememberUpdatedState(lensGeometry)
+                val indicatorOffsetPx = motion.offsetPx
+                    .coerceIn(lensGeometry.minOffset, lensGeometry.maxOffset)
+                val indicatorLeftPx = indicatorOffsetPx + indicatorHorizontalInsetPx
+                val indicatorBounds = lensGeometry.boundsAt(indicatorOffsetPx)
+                val indicatorMask = remember(indicatorBounds) {
+                    Path().apply {
+                        addRoundRect(
+                            RoundRect(
+                                rect = indicatorBounds,
+                                cornerRadius = lensGeometry.cornerRadius,
+                            ),
+                        )
+                    }
                 }
                 val selectionPosition = if (itemWidthPx > 0f) {
                     (indicatorOffsetPx / itemWidthPx)
@@ -195,185 +307,76 @@ internal fun MainBottomNavigation(
                 } else {
                     selectedIndex.toFloat()
                 }
-                val indicatorHorizontalInsetPx = with(density) {
-                    indicatorHorizontalInset.toPx()
-                }
-                val indicatorLeftPx = indicatorOffsetPx + indicatorHorizontalInsetPx
-                val stretchVelocityPxPerSecond = with(density) { 2200.dp.toPx() }
-                val reflectionProgress by animateFloatAsState(
-                    targetValue = if (isDragging) 1f else 0f,
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 620f),
-                    label = "bottomNavigationReflectionProgress",
-                )
-                val indicatorRim = Brush.horizontalGradient(
-                    listOf(
-                        lerp(
-                            Color.White.copy(alpha = if (darkTheme) 0.16f else 0.34f),
-                            Color(0xFF52DCE5).copy(alpha = if (darkTheme) 0.18f else 0.24f),
-                            reflectionProgress,
-                        ),
-                        Color.White.copy(alpha = if (darkTheme) 0.34f else 0.68f),
-                        lerp(
-                            Color.White.copy(alpha = if (darkTheme) 0.14f else 0.28f),
-                            Color(0xFF9C78FF).copy(alpha = if (darkTheme) 0.16f else 0.22f),
-                            reflectionProgress,
-                        ),
-                    ),
-                )
-                val indicatorScale by animateFloatAsState(
-                    targetValue = when {
-                        isDragging -> 1.35f
-                        pressedIndex >= 0 -> 1.15f
-                        else -> 1f
-                    },
-                    animationSpec = spring(dampingRatio = 0.46f, stiffness = 520f),
-                    label = "bottomNavigationIndicatorScale",
-                )
-                val indicatorVerticalInset by animateDpAsState(
-                    targetValue = when {
-                        isDragging -> 0.dp
-                        pressedIndex == selectedIndex -> 2.dp
-                        else -> IndicatorEdgeInset
-                    },
-                    animationSpec = spring(dampingRatio = 0.42f, stiffness = 820f),
-                    label = "bottomNavigationIndicatorVerticalInset",
-                )
-                val dragState = rememberDraggableState { delta ->
-                    if (isDragging && maxDragOffsetPx > 0f) {
-                        val now = System.nanoTime()
-                        val elapsedSeconds =
-                            ((now - lastDragEventNanos).coerceAtLeast(4_000_000L) / 1_000_000_000f)
-                        val instantaneousVelocity = (delta / elapsedSeconds).coerceIn(
-                            -stretchVelocityPxPerSecond * 1.4f,
-                            stretchVelocityPxPerSecond * 1.4f,
-                        )
-                        dragVelocityPxPerSecond =
-                            dragVelocityPxPerSecond * 0.68f + instantaneousVelocity * 0.32f
-                        lastDragEventNanos = now
-                        dragOffsetPx = (dragOffsetPx + delta).coerceIn(0f, maxDragOffsetPx)
-                    }
-                }
-                LaunchedEffect(isDragging) {
-                    if (isDragging) {
-                        while (true) {
-                            withFrameNanos { frameTimeNanos ->
-                                if (frameTimeNanos - lastDragEventNanos > 40_000_000L) {
-                                    dragVelocityPxPerSecond *= 0.82f
-                                    if (abs(dragVelocityPxPerSecond) < 20f) {
-                                        dragVelocityPxPerSecond = 0f
-                                    }
-                                }
-                            }
-                        }
-                    }
+                fun dragBy(delta: Float) {
+                    lastDragEventTime = SystemClock.uptimeMillis()
+                    dragDistancePx += delta
+                    dragVelocityTracker.addPosition(lastDragEventTime, Offset(dragDistancePx, 0f))
+                    dragSpeedRatio = (
+                        abs(dragVelocityTracker.calculateVelocity().x) / stretchVelocityPxPerSecond
+                        ).coerceIn(0f, 1f)
+                    val geometry = latestLensGeometry
+                    motion.dragBy(delta, geometry.minOffset, geometry.maxOffset)
                 }
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .draggable(
-                            state = dragState,
-                            orientation = Orientation.Horizontal,
-                            onDragStarted = { startPosition ->
-                                val hitLeft = indicatorLeftPx
-                                val hitRight = indicatorLeftPx + indicatorWidthPx
-                                if (startPosition.x in hitLeft..hitRight) {
-                                    pressedIndex = -1
-                                    isDragging = true
-                                    dragOffsetPx = indicatorOffsetPx
-                                    dragVelocityPxPerSecond = 0f
-                                    lastDragEventNanos = System.nanoTime()
+                        .selectableGroup()
+                        .pointerInput(itemWidthPx) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val geometry = latestLensGeometry
+                                val visibleOffset = motion.offsetPx.coerceIn(geometry.minOffset, geometry.maxOffset)
+                                val hitBounds = geometry.boundsAt(visibleOffset)
+                                if (down.position.x !in hitBounds.left..hitBounds.right) {
+                                    return@awaitEachGesture
                                 }
-                            },
-                            onDragStopped = { releaseVelocity ->
-                                if (isDragging) {
-                                    val cappedReleaseVelocity = releaseVelocity.coerceIn(
-                                        -stretchVelocityPxPerSecond * 1.8f,
-                                        stretchVelocityPxPerSecond * 1.8f,
-                                    )
-                                    val projectedOffset =
-                                        (dragOffsetPx + cappedReleaseVelocity * 0.065f)
-                                            .coerceIn(0f, maxDragOffsetPx)
-                                    val destinationIndex = if (maxDragOffsetPx > 0f) {
-                                        (projectedOffset / maxDragOffsetPx * destinations.lastIndex)
-                                            .roundToInt()
-                                            .coerceIn(destinations.indices)
-                                    } else {
-                                        selectedIndex
+                                // Freeze a settling lens at its visible position before tracking a new finger.
+                                motion.capture(visibleOffset)
+                                var released = false
+                                var dragged = false
+                                try {
+                                    val start = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ ->
+                                        change.consume()
+                                    } ?: return@awaitEachGesture
+                                    dragged = true
+                                    motion.beginDrag()
+                                    dragDistancePx = 0f
+                                    dragSpeedRatio = 0f
+                                    lastDragEventTime = SystemClock.uptimeMillis()
+                                    dragVelocityTracker.resetTracking()
+                                    dragVelocityTracker.addPosition(lastDragEventTime, Offset.Zero)
+                                    dragBy(start.position.x - down.position.x)
+                                    released = horizontalDrag(start.id) { change ->
+                                        dragBy(change.positionChange().x)
+                                        change.consume()
                                     }
-                                    animatedIndicatorOffset.snapTo(dragOffsetPx)
-                                    isDragging = false
-                                    dragVelocityPxPerSecond = 0f
-                                    onDestinationSelected(destinations[destinationIndex])
-                                    animatedIndicatorOffset.animateTo(
-                                        targetValue = destinationIndex * itemWidthPx,
-                                        animationSpec = spring(
-                                            dampingRatio = 0.52f,
-                                            stiffness = 480f,
-                                        ),
-                                        initialVelocity = cappedReleaseVelocity,
+                                } finally {
+                                    val destinationIndex = if (dragged && released) {
+                                        nearestNavigationIndex(motion.offsetPx, itemWidthPx, destinations.size)
+                                    } else latestSelectedIndex
+                                    dragSpeedRatio = 0f
+                                    motion.settleTo(
+                                        destinationIndex * latestItemWidthPx, latestReduceMotion,
                                     )
+                                    if (dragged && released) {
+                                        latestOnDestinationSelected(destinations[destinationIndex])
+                                    }
                                 }
-                            },
-                        ),
-                ) {
-                    NavigationBackdropItems(
-                        destinations = destinations,
-                        selectionPosition = selectionPosition,
-                        selectedTint = MaterialTheme.colorScheme.secondary,
-                        unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .clearAndSetSemantics { }
-                            .alpha(0f)
-                            .layerBackdrop(navigationItemsBackdrop)
-                            .fillMaxSize(),
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .width(indicatorWidth)
-                            .fillMaxHeight()
-                            .graphicsLayer {
-                                translationX = indicatorLeftPx
-                                scaleX = indicatorScale
-                                scaleY = indicatorScale
                             }
-                            .padding(vertical = indicatorVerticalInset.coerceAtLeast(0.dp))
-                            .clip(IndicatorShape)
-                            .drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { IndicatorShape },
-                                effects = {
-                                    vibrancy()
-                                    blur((7f - reflectionProgress * 3f).dp.toPx())
-                                    lens(
-                                        (18f * reflectionProgress).dp.toPx(),
-                                        (26f * reflectionProgress).dp.toPx(),
-                                        chromaticAberration = true,
-                                    )
-                                },
-                                onDrawSurface = {
-                                    drawRect(
-                                        lerp(
-                                            Color(0xFF8C9198).copy(
-                                                alpha = if (darkTheme) 0.28f else 0.22f,
-                                            ),
-                                            Color.White.copy(
-                                                alpha = if (darkTheme) 0.20f else 0.26f,
-                                            ),
-                                            reflectionProgress,
-                                        ),
-                                    )
-                                },
-                            )
-                            .border(
-                                width = 0.8.dp,
-                                brush = indicatorRim,
-                                shape = IndicatorShape,
-                            ),
-                    )
-
-                    Row(modifier = Modifier.fillMaxSize()) {
+                        },
+                ) {
+                    // Hide originals under the lens, but record the unmasked row on its own canvas.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                clipPath(indicatorMask, ClipOp.Difference) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                            .layerBackdrop(navigationItemsBackdrop),
+                    ) {
                         destinations.forEachIndexed { index, destination ->
                             val committedSelected = selectedIndex == index
                             val selectionInfluence =
@@ -381,44 +384,33 @@ internal fun MainBottomNavigation(
                             val label = stringResource(destination.labelRes)
                             val itemPressOffset by animateDpAsState(
                                 targetValue = if (pressedIndex == index) 2.dp else 0.dp,
-                                animationSpec = spring(dampingRatio = 0.34f, stiffness = 850f),
+                                animationSpec = spring(NavigationSpringDamping, NavigationSpringStiffness),
                                 label = "bottomNavigationItemOffset$index",
                             )
                             val itemColor = lerp(
                                 MaterialTheme.colorScheme.onSurfaceVariant,
                                 MaterialTheme.colorScheme.secondary,
-                                selectionInfluence,
+                                if (isDragging) (selectionInfluence * 2f).coerceAtMost(1f)
+                                    else selectionInfluence,
                             )
-                            val smoothCoverage = selectionInfluence * selectionInfluence *
-                                (3f - 2f * selectionInfluence)
-                            val itemAlpha = 1f - smoothCoverage * reflectionProgress
-
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .graphicsLayer { alpha = itemAlpha }
-                                    .semantics {
-                                        role = Role.Tab
-                                        this.selected = committedSelected
-                                        onClick(label = label) {
-                                            onDestinationSelected(destination)
-                                            true
-                                        }
-                                    }
-                                    .pointerInput(index) {
-                                        detectTapGestures(
-                                            onPress = {
-                                                pressedIndex = index
-                                                tryAwaitRelease()
-                                                if (pressedIndex == index) pressedIndex = -1
-                                            },
-                                            onLongPress = {
-                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            },
-                                            onTap = { onDestinationSelected(destination) },
-                                        )
-                                    },
+                                    .selectable(
+                                        selected = committedSelected,
+                                        interactionSource = interactions[index],
+                                        indication = null,
+                                        role = Role.Tab,
+                                        onClick = { latestOnDestinationSelected(destination) },
+                                    )
+                                    .then(
+                                        if (focusedStates[index].value) Modifier.border(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                                            IndicatorShape,
+                                        ) else Modifier,
+                                    ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 NavigationItemVisual(
@@ -433,73 +425,81 @@ internal fun MainBottomNavigation(
                         }
                     }
 
+                    val indicatorPlacement = Modifier
+                        .width(indicatorWidth)
+                        .fillMaxHeight()
+                        .offset(x = with(density) { indicatorLeftPx.toDp() })
+                        .padding(vertical = glassVerticalInset)
+                    val progress = reflectionProgress.coerceIn(0f, 1f)
+                    val opticalProgress = refractionProgress.coerceIn(0f, 1f)
+                    val glassColor = lerp(restingGlassColor, movingGlassColor, progress * 0.75f)
+                    val rimBackdrop = rememberBackdrop(backdrop) { drawBackdrop ->
+                        drawRect(glassColor)
+                        // Sample around all four track edges, never through the central surface.
+                        clipRect(
+                            left = -indicatorBounds.left / glassScaleX,
+                            top = -indicatorBounds.top / glassScaleY,
+                            right = (trackWidthPx - indicatorBounds.left) / glassScaleX,
+                            bottom = (trackHeightPx - indicatorBounds.top) / glassScaleY,
+                            clipOp = ClipOp.Difference,
+                        ) {
+                            drawBackdrop()
+                        }
+                    }
+                    val indicatorBackdrop = rememberCombinedBackdrop(rimBackdrop, navigationItemsBackdrop)
                     Box(
-                        modifier = Modifier
-                            .width(indicatorWidth)
-                            .fillMaxHeight()
-                            .zIndex(2f)
-                            .graphicsLayer {
-                                translationX = indicatorLeftPx
-                                alpha = reflectionProgress
-                            }
-                            .padding(vertical = indicatorVerticalInset.coerceAtLeast(0.dp))
+                        modifier = indicatorPlacement
                             .drawBackdrop(
-                                backdrop = navigationItemsBackdrop,
+                                backdrop = indicatorBackdrop,
                                 shape = { IndicatorShape },
-                                effects = { },
-                                layerBlock = {
-                                    scaleX = indicatorScale
-                                    scaleY = indicatorScale
+                                effects = {
+                                    lens(
+                                        (4f + 14f * opticalProgress).dp.toPx(),
+                                        (28f * opticalProgress).dp.toPx(),
+                                        depthEffect = true,
+                                    )
                                 },
-                                onDrawSurface = { },
-                            )
-                            .clearAndSetSemantics { },
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth(0.88f)
-                            .height(1.dp)
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Color.Transparent,
-                                        Color.White.copy(alpha = if (darkTheme) 0.10f else 0.38f),
-                                        Color.Transparent,
-                                    ),
-                                ),
+                                // Backdrop's material APIs keep lighting separate from glyph refraction.
+                                highlight = {
+                                    Highlight(
+                                        width = 0.9.dp,
+                                        blurRadius = 0.45.dp,
+                                        alpha = 0.55f + 0.4f * progress,
+                                        style = HighlightStyle.Default(
+                                            angle = 45f + 30f * progress *
+                                                (selectionPosition - destinations.lastIndex / 2f),
+                                            falloff = 1.4f,
+                                        ),
+                                    )
+                                },
+                                shadow = null,
+                                innerShadow = {
+                                    if (progress > 0f) {
+                                        InnerShadow(
+                                            radius = 4.dp,
+                                            offset = DpOffset(0.dp, 2.dp),
+                                            color = Color.Black.copy(
+                                                alpha = if (darkTheme) 0.24f else 0.12f,
+                                            ),
+                                            alpha = progress,
+                                        )
+                                    } else {
+                                        null
+                                    }
+                                },
+                                layerBlock = {
+                                    scaleX = glassScaleX
+                                    scaleY = glassScaleY
+                                },
+                                onDrawBackdrop = { drawBackdrop ->
+                                    scale(1f + 0.04f * opticalProgress) {
+                                        drawBackdrop()
+                                    }
+                                },
                             ),
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun NavigationBackdropItems(
-    destinations: List<MainDestination>,
-    selectionPosition: Float,
-    selectedTint: Color,
-    unselectedTint: Color,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier) {
-        destinations.forEachIndexed { index, destination ->
-            val selectionInfluence =
-                (1f - abs(index - selectionPosition)).coerceIn(0f, 1f)
-            NavigationItemVisual(
-                destination = destination,
-                label = stringResource(destination.labelRes),
-                selected = selectionInfluence >= 0.5f,
-                tint = lerp(unselectedTint, selectedTint, selectionInfluence),
-                iconSize = 22.dp,
-                contentDescription = null,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            )
         }
     }
 }

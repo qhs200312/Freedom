@@ -290,10 +290,6 @@
     <string name="title_pref_hev_tunnel_loglevel">Hev Tun Log Level</string>
     <string name="title_pref_hev_tunnel_rw_timeout">Hev Tun read/write timeout (seconds) (tcp,udp default 300,60)</string>
 
-    <string name="title_logcat">লগক্যাট</string>
-    <string name="logcat_copy">কপি করুন</string>
-    <string name="logcat_clear">স্পষ্ট করুন</string>
-    <string name="logcat_share">লগ শেয়ার করুন</string>
     <string name="title_service_restart">সার্ভিস পুনরায় চালু করুন</string>
     <string name="title_del_all_config">সব কনফিগারেশন মুছে ফেলুন</string>
     <string name="title_del_duplicate_config">ডুপ্লিকেট কনফিগারেশন মুছে ফেলুন</string>

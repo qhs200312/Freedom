@@ -16,6 +16,8 @@ import com.v2ray.ang.util.ZipUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -144,7 +146,7 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    private fun backupConfigurationToCache(cacheDir: File, appName: String): Pair<Boolean, String> {
+    private suspend fun backupConfigurationToCache(cacheDir: File, appName: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val dateFormatted = SimpleDateFormat(
             "yyyy-MM-dd-HH-mm-ss",
             Locale.getDefault()
@@ -155,10 +157,10 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
 
         val count = MMKV.backupAllToDirectory(backupDir)
         if (count <= 0) {
-            return Pair(false, "")
+            return@withContext Pair(false, "")
         }
 
-        return if (ZipUtil.zipFromFolder(backupDir, outputZipFilePath)) {
+        if (ZipUtil.zipFromFolder(backupDir, outputZipFilePath)) {
             Pair(true, outputZipFilePath)
         } else {
             Pair(false, "")

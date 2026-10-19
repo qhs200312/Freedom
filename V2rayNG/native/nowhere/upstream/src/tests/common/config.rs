@@ -1,0 +1,63 @@
+// Copyright (C) 2026 NodePassProject <https://github.com/NodePassProject>
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! Configuration parsing tests.
+
+use super::*;
+use url::Url;
+
+#[test]
+fn query_first_ignores_unknown_parameters_and_keeps_first_duplicate() {
+    let parsed = Url::parse("portal://key@localhost:2000?mode=first&label=now%2F1").unwrap();
+    let values = query_first(&parsed, &["mode", "label"]).unwrap();
+    assert_eq!(values["mode"], "first");
+    assert_eq!(values["label"], "now/1");
+
+    let duplicate = Url::parse("portal://key@localhost:2000?mode=first&mode=second").unwrap();
+    assert_eq!(query_first(&duplicate, &["mode"]).unwrap()["mode"], "first");
+    let unknown = Url::parse("portal://key@localhost:2000?typo=value&%FF=value").unwrap();
+    assert!(query_first(&unknown, &["mode"]).unwrap().is_empty());
+}
+
+#[test]
+fn query_first_preserves_literal_slash_and_plus_and_validates_the_selected_value() {
+    let protocol = Url::parse("portal://key@localhost:2000?label=private/2").unwrap();
+    assert_eq!(
+        query_first(&protocol, &["label"]).unwrap()["label"],
+        "private/2"
+    );
+
+    let parsed = Url::parse("portal://key@localhost:2000?label=now+private").unwrap();
+    assert_eq!(
+        query_first(&parsed, &["label"]).unwrap()["label"],
+        "now+private"
+    );
+
+    let bad = Url::parse("portal://key@localhost:2000?label=%GG").unwrap();
+    assert!(query_first(&bad, &["label"]).is_err());
+
+    let ignored_bad_duplicate =
+        Url::parse("portal://key@localhost:2000?label=now%2F1&label=%GG").unwrap();
+    assert_eq!(
+        query_first(&ignored_bad_duplicate, &["label"]).unwrap()["label"],
+        "now/1"
+    );
+}
+
+#[test]
+fn rate_limit_converts_mbps_to_bytes_per_second() {
+    assert_eq!(rate_limit_bytes_per_second(-1), 0);
+    assert_eq!(rate_limit_bytes_per_second(0), 0);
+    assert_eq!(rate_limit_bytes_per_second(1), 125_000);
+    assert_eq!(rate_limit_bytes_per_second(8), 1_000_000);
+}
+
+#[test]
+fn flow_setup_timeout_defaults_and_accepts_override() {
+    unsafe { std::env::remove_var("NOW_FLOW_SETUP_TIMEOUT") };
+    assert_eq!(flow_setup_timeout(), Duration::from_secs(20));
+
+    unsafe { std::env::set_var("NOW_FLOW_SETUP_TIMEOUT", "750ms") };
+    assert_eq!(flow_setup_timeout(), Duration::from_millis(750));
+    unsafe { std::env::remove_var("NOW_FLOW_SETUP_TIMEOUT") };
+}

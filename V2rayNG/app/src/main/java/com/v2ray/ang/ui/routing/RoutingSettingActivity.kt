@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -86,7 +87,9 @@ class RoutingSettingActivity : HelperBaseComponentActivity() {
             viewModel = viewModel,
             domainStrategyState = domainStrategyState,
             onBackClick = { finish() },
-            onAddRule = { startActivity(Intent(this, RoutingEditActivity::class.java)) },
+            onAddRule = { apps ->
+                startActivity(Intent(this, RoutingEditActivity::class.java).putExtra("app_rule", apps))
+            },
             onEditRule = { position ->
                 startActivity(Intent(this, RoutingEditActivity::class.java).putExtra("position", position))
             },
@@ -180,7 +183,7 @@ fun RoutingSettingScreen(
     viewModel: RoutingSettingsViewModel,
     domainStrategyState: MutableStateFlow<String>,
     onBackClick: () -> Unit,
-    onAddRule: () -> Unit,
+    onAddRule: (Boolean) -> Unit,
     onEditRule: (Int) -> Unit,
     onDomainStrategySelected: (String) -> Unit,
     onImportPredefined: (Int) -> Unit,
@@ -189,10 +192,13 @@ fun RoutingSettingScreen(
     onExportClipboard: () -> Unit
 ) {
     val rulesets by viewModel.rulesetsFlow.collectAsStateWithLifecycle()
+    val nodes by viewModel.nodesFlow.collectAsStateWithLifecycle()
+    val defaultNode by viewModel.defaultNodeFlow.collectAsStateWithLifecycle()
     val domainStrategy by domainStrategyState.collectAsState()
     var disableNonProxiedUdp by rememberMmkvBool(AppConfig.PREF_DISABLE_NON_PROXIED_UDP, false)
     var showMenu by remember { mutableStateOf(false) }
     var showPresetDialog by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
 
     val domainStrategies = stringArrayResource(R.array.routing_domain_strategy).toList()
     val presetRulesets = stringArrayResource(R.array.preset_rulesets).toList()
@@ -212,11 +218,27 @@ fun RoutingSettingScreen(
                 title = stringResource(R.string.routing_settings_title),
                 onBackClick = onBackClick,
                 actions = {
-                    IconButton(onClick = onAddRule) {
-                        Icon(
-                            painterResource(R.drawable.ic_add_24dp),
-                            contentDescription = stringResource(R.string.routing_settings_add_rule)
-                        )
+                    Box {
+                        IconButton(onClick = { showAddMenu = true }) {
+                            Icon(
+                                painterResource(R.drawable.ic_add_24dp),
+                                contentDescription = stringResource(R.string.routing_settings_add_rule)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showAddMenu,
+                            onDismissRequest = { showAddMenu = false },
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.routing_add_domains)) },
+                                onClick = { showAddMenu = false; onAddRule(false) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.routing_add_apps)) },
+                                onClick = { showAddMenu = false; onAddRule(true) },
+                            )
+                        }
                     }
                     Box {
                         IconButton(onClick = { showMenu = true }) {
@@ -259,6 +281,16 @@ fun RoutingSettingScreen(
                 .padding(innerPadding)
                 .verticalScrollbar(lazyListState)
         ) {
+            item(key = "default_node") {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text(stringResource(R.string.routing_target_default), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        defaultNode ?: stringResource(R.string.routing_target_not_selected),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             item(key = "domain_strategy") {
                 SettingsListItem(
                     title = stringResource(R.string.routing_settings_domain_strategy),
@@ -295,6 +327,7 @@ fun RoutingSettingScreen(
                     ) {
                         RoutingRulesetItem(
                             ruleset = ruleset,
+                            nodes = nodes,
                             onEdit = { onEditRule(index) },
                             onEnabledChange = { checked ->
                                 val updated = ruleset.copy(enabled = checked)
@@ -325,9 +358,12 @@ fun RoutingSettingScreen(
 @Composable
 private fun RoutingRulesetItem(
     ruleset: RulesetItem,
+    nodes: List<RoutingNodeOption>,
     onEdit: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    val appNames = remember(context, ruleset.process) { routingApplicationNames(context, ruleset.process.orEmpty()) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -352,7 +388,8 @@ private fun RoutingRulesetItem(
                     )
                 }
             }
-            val domainIpInfo = (ruleset.domain ?: ruleset.ip ?: ruleset.process ?: ruleset.port)?.toString() ?: ""
+            val domainIpInfo = if (!ruleset.process.isNullOrEmpty()) appNames
+                else (ruleset.domain ?: ruleset.ip ?: ruleset.port)?.toString().orEmpty()
             if (domainIpInfo.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -363,10 +400,10 @@ private fun RoutingRulesetItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (!ruleset.outboundTag.isNullOrEmpty()) {
+            if (ruleset.outboundTag.isNotEmpty() || !ruleset.outboundProfileId.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = ruleset.outboundTag,
+                    text = routingTargetLabel(ruleset.outboundTag, ruleset.outboundProfileId, nodes),
                     style = MaterialTheme.typography.labelMedium,
                     color = colorConfigType
                 )

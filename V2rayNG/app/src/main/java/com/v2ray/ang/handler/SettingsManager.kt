@@ -331,7 +331,7 @@ object SettingsManager {
         }
 
         val rulesetItems = MmkvManager.decodeRoutingRulesets()
-        val exist = rulesetItems?.filter { it.enabled && it.outboundTag == TAG_DIRECT }?.any {
+        val exist = rulesetItems?.filter { it.enabled && com.v2ray.ang.core.RoutingTargets.tag(it) == TAG_DIRECT }?.any {
             it.domain?.contains(GEOSITE_PRIVATE) == true || it.ip?.contains(GEOIP_PRIVATE) == true
         }
         return exist == true
@@ -613,17 +613,7 @@ object SettingsManager {
      *  Check if process routing can be used.
      */
     fun canUseProcessRouting(): Boolean {
-        // Android 10+
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            return false
-        }
-
-        // Must have route only enabled
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false) == false) {
-            return false
-        }
-
-        return true
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isVpnMode() && !isRootMode()
     }
 
     /**

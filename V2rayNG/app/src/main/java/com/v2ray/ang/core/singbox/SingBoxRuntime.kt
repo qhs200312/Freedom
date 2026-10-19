@@ -2,7 +2,6 @@ package com.v2ray.ang.core.singbox
 
 import android.app.Service
 import android.os.SystemClock
-import com.v2ray.ang.AppConfig
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.core.RuntimeCore
 import com.v2ray.ang.core.SingBoxConfigGenerator
@@ -29,6 +28,7 @@ internal class SingBoxRuntime(
 ) : CoreRuntime {
     override val type = RuntimeCore.SING_BOX
     private val core = SingBoxCoreManager()
+    private var trafficBindings = emptyMap<String, com.v2ray.ang.dto.NodeTrafficBinding>()
     override val isRunning: Boolean get() = core.isRunning()
 
     override fun start() {
@@ -43,7 +43,12 @@ internal class SingBoxRuntime(
         )
         core.start(
             service,
-            SingBoxConfigGenerator.generate(profile, Utils.userAssetPath(service), enableTun = host != null),
+            SingBoxConfigGenerator.generate(
+                profile,
+                Utils.userAssetPath(service),
+                enableTun = host != null,
+                onTrafficBindings = { trafficBindings = it },
+            ),
             platform,
         )
     }
@@ -62,11 +67,8 @@ internal class SingBoxRuntime(
         return if (reachable) SystemClock.elapsedRealtime() - started else -1
     }
 
-    override fun trafficStats(): List<OutboundTrafficStat> {
-        val (up, down) = core.queryTrafficDelta()
-        return listOf(
-            OutboundTrafficStat(AppConfig.TAG_PROXY, AppConfig.UPLINK, up),
-            OutboundTrafficStat(AppConfig.TAG_PROXY, AppConfig.DOWNLINK, down),
-        )
+    override fun trafficStats(): List<OutboundTrafficStat> = core.queryTrafficStats().map { stat ->
+        val binding = trafficBindings[stat.tag]
+        stat.copy(profileIds = binding?.profileIds.orEmpty(), countInTotal = binding?.countInTotal ?: true)
     }
 }

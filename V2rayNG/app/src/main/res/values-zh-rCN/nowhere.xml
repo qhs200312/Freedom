@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="menu_item_import_config_manually_nowhere">添加 [Nowhere]</string>
+    <string name="nowhere_shared_key">共享密钥（32 位小写十六进制）</string>
+    <string name="nowhere_carrier">传输方式（tcp 为 TLS，udp 为 QUIC）</string>
+    <string name="nowhere_morph">Morph 混淆</string>
+</resources>

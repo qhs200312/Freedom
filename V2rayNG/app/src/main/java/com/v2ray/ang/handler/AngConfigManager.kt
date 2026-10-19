@@ -18,6 +18,8 @@ import com.v2ray.ang.fmt.CustomFmt
 import com.v2ray.ang.fmt.Hysteria2Fmt
 import com.v2ray.ang.fmt.ShadowsocksFmt
 import com.v2ray.ang.fmt.SocksFmt
+import com.v2ray.ang.fmt.NowhereFmt
+import com.v2ray.ang.fmt.AnyTlsFmt
 import com.v2ray.ang.fmt.TrojanFmt
 import com.v2ray.ang.fmt.V2rayNFmt
 import com.v2ray.ang.fmt.VlessFmt
@@ -38,6 +40,8 @@ object AngConfigManager {
             EConfigType.VMESS.protocolScheme to VmessFmt::parse,
             EConfigType.SHADOWSOCKS.protocolScheme to ShadowsocksFmt::parse,
             EConfigType.SOCKS.protocolScheme to SocksFmt::parse,
+            EConfigType.NOWHERE.protocolScheme to NowhereFmt::parse,
+            EConfigType.ANYTLS.protocolScheme to AnyTlsFmt::parse,
             AppConfig.SOCKS4 to SocksFmt::parse,
             AppConfig.SOCKS5 to SocksFmt::parse,
             EConfigType.TROJAN.protocolScheme to TrojanFmt::parse,
@@ -157,6 +161,8 @@ object AngConfigManager {
                 EConfigType.VMESS -> VmessFmt.toUri(config)
                 EConfigType.SHADOWSOCKS -> ShadowsocksFmt.toUri(config)
                 EConfigType.SOCKS -> SocksFmt.toUri(config)
+                EConfigType.NOWHERE -> NowhereFmt.toUri(config)
+                EConfigType.ANYTLS -> AnyTlsFmt.toUri(config)
                 EConfigType.VLESS -> VlessFmt.toUri(config)
                 EConfigType.TROJAN -> TrojanFmt.toUri(config)
                 EConfigType.WIREGUARD -> WireguardFmt.toUri(config)
@@ -177,7 +183,12 @@ object AngConfigManager {
      * @param append Whether to append the configurations.
      * @return Counts for imported configurations, recognized subscriptions, and subscription updates.
      */
-    fun importBatchConfig(server: String?, subid: String, append: Boolean): BatchImportResult {
+    fun importBatchConfig(
+        server: String?,
+        subid: String,
+        append: Boolean,
+        allowInsecureHttp: Boolean = false,
+    ): BatchImportResult {
         var count = parseBatchConfig(Utils.decode(server), subid, append)
         if (count <= 0) {
             count = parseBatchConfig(server, subid, append)
@@ -186,9 +197,9 @@ object AngConfigManager {
             count = parseCustomConfigServer(server, subid, append)
         }
 
-        var subscriptions = parseBatchSubscription(server)
+        var subscriptions = parseBatchSubscription(server, allowInsecureHttp)
         if (subscriptions.isEmpty()) {
-            subscriptions = parseBatchSubscription(Utils.decode(server))
+            subscriptions = parseBatchSubscription(Utils.decode(server), allowInsecureHttp)
         }
         val updateResult = subscriptions.fold(SubscriptionUpdateResult()) { result, subscription ->
             result + updateConfigViaSub(subscription)
@@ -207,7 +218,7 @@ object AngConfigManager {
      * @param servers The servers string.
      * @return New or existing subscriptions recognized in the input.
      */
-    private fun parseBatchSubscription(servers: String?): List<SubscriptionCache> {
+    private fun parseBatchSubscription(servers: String?, allowInsecureHttp: Boolean): List<SubscriptionCache> {
         try {
             if (servers == null) {
                 return emptyList()
@@ -217,8 +228,9 @@ object AngConfigManager {
                 .map(String::trim)
                 .filter(String::isNotEmpty)
                 .distinct()
-                .filter(Utils::isValidSubUrl)
-                .map(::importUrlAsSubscription)
+                .filter { Utils.isValidSubUrl(it) ||
+                    (allowInsecureHttp && isHttpSubscriptionUrl(it) && Utils.isValidUrl(it)) }
+                .map { importUrlAsSubscription(it, allowInsecureHttp && isHttpSubscriptionUrl(it)) }
                 .toList()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to parse batch subscription", e)
@@ -258,10 +270,22 @@ object AngConfigManager {
 
             // Batch save all parsed configs (only one serverList read/write)
             if (configs.isNotEmpty()) {
+                val routingRules = if (!append) MmkvManager.decodeRoutingRulesets().orEmpty() else emptyList()
+                val boundIds = routingRules.mapNotNull { it.outboundProfileId }.toSet()
+                val previousTargets = if (!append) {
+                    MmkvManager.decodeServerList(subid)
+                        .filter { it in boundIds }
+                        .mapNotNull { id -> MmkvManager.decodeServerConfig(id)?.let { id to it } }
+                        .toMap()
+                } else emptyMap()
                 if (!append) {
                     MmkvManager.removeServerViaSubid(subid)
                 }
                 val keyToProfile = batchSaveConfigs(configs, subid)
+                if (previousTargets.isNotEmpty()) {
+                    val rebound = com.v2ray.ang.core.RoutingTargets.rebindRules(routingRules, previousTargets, keyToProfile)
+                    if (rebound != routingRules) MmkvManager.encodeRoutingRulesets(rebound.toMutableList())
+                }
                 val matchKey = findMatchedProfileKey(keyToProfile, removedSelected)
                 matchKey?.let { MmkvManager.setSelectServer(it) }
             }
@@ -560,7 +584,6 @@ object AngConfigManager {
                     return SubscriptionUpdateResult(failureCount = 1)
                 }
             }
-            LogUtil.i(AppConfig.TAG, url)
             val userAgent = it.subscription.userAgent
             val requestHeaders = it.subscription.requestHeaders
             val proxyUsername = SettingsManager.getSocksUsername()
@@ -684,15 +707,20 @@ object AngConfigManager {
      * @param url The URL.
      * @return The existing subscription for this URL, or the newly created subscription.
      */
-    private fun importUrlAsSubscription(url: String): SubscriptionCache {
+    private fun importUrlAsSubscription(url: String, allowInsecureHttp: Boolean): SubscriptionCache {
         val subscriptions = MmkvManager.decodeSubscriptions()
         subscriptions.firstOrNull { it.subscription.url.trim() == url }?.let {
+            if (allowInsecureHttp && !it.subscription.allowInsecureUrl) {
+                it.subscription.allowInsecureUrl = true
+                MmkvManager.encodeSubscription(it.guid, it.subscription)
+            }
             return it
         }
         val uri = URI(Utils.fixIllegalUrl(url))
         val subItem = SubscriptionItem(
             remarks = uri.fragment ?: "import sub",
             url = url,
+            allowInsecureUrl = allowInsecureHttp,
         )
         val guid = Utils.getUuid()
         MmkvManager.encodeSubscription(guid, subItem)

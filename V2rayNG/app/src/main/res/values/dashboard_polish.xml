@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_traffic_information">Traffic information</string>
+    <string name="home_runtime_status">Runtime status</string>
+    <string name="subscription_http_import_title">Import HTTP subscription</string>
+    <string name="subscription_http_import_message">HTTP subscription links are unencrypted. Allow HTTP for the subscriptions in this import and continue importing nodes?</string>
+    <string name="subscription_http_import_confirm">Continue importing</string>
+</resources>

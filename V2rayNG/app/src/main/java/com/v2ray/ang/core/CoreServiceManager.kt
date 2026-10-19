@@ -23,6 +23,9 @@ import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.root.LocationPrivacyManager
 import com.v2ray.ang.util.RuntimeDiagnostics
 import com.v2ray.ang.util.Utils
+import com.v2ray.ang.dto.UrlContentRequest
+import com.v2ray.ang.util.HttpUtil
+import com.v2ray.ang.util.firstReachable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,10 +122,14 @@ object CoreServiceManager {
 
     fun isCoreReachable(): Boolean {
         val ticket = session.token
-        for (url in startupProbeUrls(listOf(SettingsManager.getDelayTestUrl()))) {
-            if (runCatching { session.measureDelay(ticket, url) }.getOrDefault(-1L) >= 0L) return true
+        val reachable = firstReachable(startupProbeUrls(listOf(SettingsManager.getDelayTestUrl()))) { url ->
+            HttpUtil.isUrlReachable(UrlContentRequest(
+                url = url, timeout = 4_000, socksPort = SettingsManager.getSocksPort(),
+                proxyUsername = SettingsManager.getSocksUsername(),
+                proxyPassword = SettingsManager.getSocksPassword(),
+            ))
         }
-        return false
+        return reachable && session.isCurrent(ticket) && isRunning()
     }
 
     fun queryAllOutboundTrafficStats() = session.trafficStats()
@@ -243,7 +250,7 @@ object CoreServiceManager {
         }
 
         override fun stop() {
-            TrafficStatsManager.stop()
+            TrafficStatsManager.stop(runCatching { backend.trafficStats() }.getOrDefault(emptyList()))
             NotificationManager.stopSpeedNotification()
             try {
                 backend.stop()
@@ -260,7 +267,7 @@ object CoreServiceManager {
 
         override fun restart(shouldContinue: () -> Boolean): Boolean {
             // Keep the foreground service/receiver alive while Xray replaces its connections.
-            TrafficStatsManager.stop()
+            TrafficStatsManager.stop(runCatching { backend.trafficStats() }.getOrDefault(emptyList()))
             val restarted = backend.restart { shouldContinue() && !control.isStopRequested() }
             if (restarted && shouldContinue() && !control.isStopRequested()) {
                 TrafficStatsManager.start(service)

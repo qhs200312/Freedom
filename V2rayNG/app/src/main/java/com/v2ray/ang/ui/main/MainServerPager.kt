@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.dto.NodeTrafficTotal
+import com.v2ray.ang.extension.toTrafficString
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.handler.AngConfigManager
@@ -76,6 +79,7 @@ fun GroupPagerPage(
     onRemoveServer: (String) -> Unit,
     contentPadding: PaddingValues
 ) {
+    val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
     val serverFlow = remember(groupId) {
         mainViewModel.serversForGroup(groupId)
     }
@@ -83,6 +87,7 @@ fun GroupPagerPage(
     val canReorder = groupId.isNotEmpty() && searchQuery.isEmpty()
     ServerListPage(
         servers = servers,
+        nodeTotals = uiState.traffic.nodeTotals,
         selectedGuid = selectedGuid,
         canReorder = canReorder,
         doubleColumnDisplay = doubleColumnDisplay,
@@ -103,6 +108,7 @@ fun GroupPagerPage(
 @Composable
 private fun ServerListPage(
     servers: List<ServersCache>,
+    nodeTotals: Map<String, NodeTrafficTotal>,
     selectedGuid: String?,
     canReorder: Boolean,
     doubleColumnDisplay: Boolean,
@@ -140,6 +146,7 @@ private fun ServerListPage(
                 val content: @Composable () -> Unit = {
                     ServerItemColumn(
                         serverCache = serverCache,
+                        traffic = nodeTotals[serverCache.guid] ?: NodeTrafficTotal(),
                         selectedGuid = selectedGuid,
                         doubleColumnDisplay = true,
                         onSelectServer = onSelectServer,
@@ -193,6 +200,7 @@ private fun ServerListPage(
                         ) {
                             ServerItemRow(
                                 serverCache = serverCache,
+                                traffic = nodeTotals[serverCache.guid] ?: NodeTrafficTotal(),
                                 selectedGuid = selectedGuid,
                                 onSelectServer = onSelectServer,
                                 onEditServer = onEditServer,
@@ -206,6 +214,7 @@ private fun ServerListPage(
                 } else {
                     ServerItemRow(
                         serverCache = serverCache,
+                        traffic = nodeTotals[serverCache.guid] ?: NodeTrafficTotal(),
                         selectedGuid = selectedGuid,
                         onSelectServer = onSelectServer,
                         onEditServer = onEditServer,
@@ -223,6 +232,7 @@ private fun ServerListPage(
 @Composable
 private fun ServerItemRow(
     serverCache: ServersCache,
+    traffic: NodeTrafficTotal,
     selectedGuid: String?,
     onSelectServer: (String) -> Unit,
     onEditServer: (String, ProfileItem) -> Unit,
@@ -234,6 +244,7 @@ private fun ServerItemRow(
 
     ServerListItem(
         remarks = profile.remarks,
+        traffic = traffic,
         statistics = profile.description.nullIfBlank()
             ?: AngConfigManager.generateDescription(profile),
         typeDescription = getProtocolDescription(profile),
@@ -253,6 +264,7 @@ private fun ServerItemRow(
 @Composable
 private fun ServerItemColumn(
     serverCache: ServersCache,
+    traffic: NodeTrafficTotal,
     selectedGuid: String?,
     doubleColumnDisplay: Boolean,
     onSelectServer: (String) -> Unit,
@@ -265,6 +277,7 @@ private fun ServerItemColumn(
     Column {
         ServerListItem(
             remarks = profile.remarks,
+            traffic = traffic,
             statistics = profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile),
             typeDescription = getProtocolDescription(profile),
             testResult = serverCache.testDelayString,
@@ -298,7 +311,8 @@ fun ServerListItem(
     onRemove: () -> Unit,
     onMore: () -> Unit,
     modifier: Modifier = Modifier,
-    dragModifier: Modifier = Modifier
+    dragModifier: Modifier = Modifier,
+    traffic: NodeTrafficTotal = NodeTrafficTotal(),
 ) {
     Row(
         modifier = modifier
@@ -332,15 +346,17 @@ fun ServerListItem(
                 .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(remarks, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(remarks, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph),
+                    color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (doubleColumnDisplay) {
                     IconButton(onClick = onMore, Modifier.size(36.dp)) {
-                        Icon(painterResource(R.drawable.ic_more_vert_24dp), null, Modifier.size(24.dp))
+                        Icon(painterResource(R.drawable.ic_more_vert_24dp), null, Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    IconButton(onClick = onShare, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_share_24dp), null, Modifier.size(24.dp)) }
-                    IconButton(onClick = onEdit, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_edit_24dp), null, Modifier.size(24.dp)) }
-                    IconButton(onClick = onRemove, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_delete_24dp), null, Modifier.size(24.dp)) }
+                    IconButton(onClick = onShare, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_share_24dp), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    IconButton(onClick = onEdit, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_edit_24dp), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    IconButton(onClick = onRemove, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_delete_24dp), null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -385,6 +401,18 @@ fun ServerListItem(
                     }
                 }
             }
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = stringResource(R.string.node_traffic_used, traffic.total.toTrafficString()),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

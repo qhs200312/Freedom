@@ -16,10 +16,16 @@ class RoutingSettingsViewModel(application: Application) : BaseViewModel(applica
 
     private val _rulesetsFlow = MutableStateFlow<List<RulesetItem>>(emptyList())
     val rulesetsFlow: StateFlow<List<RulesetItem>> = _rulesetsFlow.asStateFlow()
+    private val _nodesFlow = MutableStateFlow<List<RoutingNodeOption>>(emptyList())
+    val nodesFlow = _nodesFlow.asStateFlow()
+    private val _defaultNodeFlow = MutableStateFlow<String?>(null)
+    val defaultNodeFlow = _defaultNodeFlow.asStateFlow()
 
     fun getAll(): List<RulesetItem> = rulesets.toList()
 
     fun reload() {
+        _nodesFlow.value = loadRoutingNodeOptions(getApplication())
+        _defaultNodeFlow.value = MmkvManager.getSelectServer()?.let(MmkvManager::decodeServerConfig)?.remarks
         val loaded = MmkvManager.decodeRoutingRulesets()?.toMutableList() ?: mutableListOf()
         var needsSave = false
         loaded.forEachIndexed { index, item ->

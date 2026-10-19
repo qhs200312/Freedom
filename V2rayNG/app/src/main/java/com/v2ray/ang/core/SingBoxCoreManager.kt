@@ -1,72 +1,134 @@
 package com.v2ray.ang.core
 
 import android.content.Context
-import corebundle.Corebundle
-import corebundle.SingBoxController
+import com.v2ray.ang.core.singbox.SingBoxTrafficTracker
+import com.v2ray.ang.core.singbox.SingBoxEnvironment
+import com.v2ray.ang.dto.OutboundTrafficStat
 import com.v2ray.ang.util.LogUtil
+import libbox.CommandClient
+import libbox.CommandClientHandler
+import libbox.CommandClientOptions
+import libbox.CommandServer
+import libbox.CommandServerHandler
+import libbox.ConnectionEvents
+import libbox.Libbox
+import libbox.LogIterator
+import libbox.OutboundGroupItemIterator
+import libbox.OutboundGroupIterator
+import libbox.OverrideOptions
+import libbox.StatusMessage
+import libbox.StringIterator
+import libbox.SystemProxyStatus
 
 class SingBoxCoreManager {
-    @Volatile
-    private var controller: SingBoxController? = null
+    @Volatile private var controller: CommandServer? = null
+    private var client: CommandClient? = null
     private var platformInterface: SingBoxPlatformInterface? = null
-    private var lastUplink = 0L
-    private var lastDownlink = 0L
+    private var traffic = SingBoxTrafficTracker()
 
     @Synchronized
     fun start(context: Context, config: String, platform: SingBoxPlatformInterface) {
         stop()
-        val instance = Corebundle.newSingBoxController(
-            context.applicationContext.filesDir.absolutePath,
-            platform,
-        )
+        val tracker = SingBoxTrafficTracker()
+        traffic = tracker
+        var instance: CommandServer? = null
+        var subscriber: CommandClient? = null
         try {
-            Corebundle.checkSingBoxConfig(config)
-            instance.start(config)
+            SingBoxEnvironment.initialize(context)
+            Libbox.checkConfig(config)
+            instance = Libbox.newCommandServer(object : CommandServerHandler {
+                override fun serviceStop() = stop()
+                override fun serviceReload() = Unit
+                override fun getSystemProxyStatus(): SystemProxyStatus? = null
+                override fun setSystemProxyEnabled(enabled: Boolean) = Unit
+                override fun triggerNativeCrash() = Unit
+                override fun writeDebugMessage(message: String?) = Unit
+                override fun connectSSHAgent(): Int = -1
+            }, platform)
+            instance.start()
+            instance.startOrReloadService(config, OverrideOptions())
+            subscriber = Libbox.newCommandClient(trafficHandler(tracker), CommandClientOptions().apply {
+                statusInterval = 1_000_000_000L
+                addCommand(Libbox.CommandConnections)
+            })
+            subscriber.connect()
             controller = instance
+            client = subscriber
             platformInterface = platform
-            lastUplink = instance.uplinkTotal()
-            lastDownlink = instance.downlinkTotal()
-            LogUtil.i("SingBoxCore", "sing-box ${Corebundle.singBoxVersion()} started")
-        } catch (e: Exception) {
-            runCatching { instance.close() }
+            LogUtil.i("SingBoxCore", "sing-box ${version()} started")
+        } catch (error: Exception) {
+            runCatching { subscriber?.disconnect() }
+            runCatching { instance?.closeService() }
+            runCatching { instance?.close() }
             platform.close()
-            controller = null
-            platformInterface = null
-            throw e
+            throw error
         }
     }
 
     @Synchronized
     fun stop() {
+        val instance = controller
+        controller = null
         try {
-            controller?.let {
-                runCatching { it.stop() }
-                    .onFailure { e -> LogUtil.w("SingBoxCore", "Failed to stop sing-box: ${e.message}") }
-                it.close()
-            }
+            runCatching { client?.disconnect() }
+            client = null
+            runCatching { instance?.closeService() }
+                .onFailure { LogUtil.w("SingBoxCore", "Failed to stop sing-box: ${it.message}") }
+            instance?.close()
         } finally {
-            controller = null
             platformInterface?.close()
             platformInterface = null
-            lastUplink = 0L
-            lastDownlink = 0L
+            traffic = SingBoxTrafficTracker()
         }
     }
 
-    fun isRunning(): Boolean = controller?.isRunning == true
-    companion object {
-        fun version(): String = Corebundle.singBoxVersion()
-    }
+    fun isRunning(): Boolean = controller != null
 
     @Synchronized
-    fun queryTrafficDelta(): Pair<Long, Long> {
-        val instance = controller ?: return 0L to 0L
-        val uplink = instance.uplinkTotal()
-        val downlink = instance.downlinkTotal()
-        val uplinkDelta = (uplink - lastUplink).coerceAtLeast(0L)
-        val downlinkDelta = (downlink - lastDownlink).coerceAtLeast(0L)
-        lastUplink = uplink
-        lastDownlink = downlink
-        return uplinkDelta to downlinkDelta
+    fun queryTrafficStats(): List<OutboundTrafficStat> = traffic.drain()
+
+    private fun trafficHandler(tracker: SingBoxTrafficTracker) = object : CommandClientHandler {
+        override fun writeConnectionEvents(events: ConnectionEvents?) {
+            val iterator = events?.iterator() ?: return
+            while (iterator.hasNext()) {
+                val event = iterator.next() ?: continue
+                val connection = event.connection
+                when (event.type.toLong()) {
+                    Libbox.ConnectionEventNew, Libbox.ConnectionEventClosed -> {
+                        if (connection != null) {
+                            tracker.record(
+                                event.id,
+                                connection.outbound,
+                                connection.uplinkTotal,
+                                connection.downlinkTotal,
+                                closed = connection.closedAt > 0L ||
+                                    event.type.toLong() == Libbox.ConnectionEventClosed,
+                                ignored = connection.outboundType == "dns",
+                            )
+                        }
+                    }
+                    Libbox.ConnectionEventUpdate -> tracker.addDelta(
+                        event.id, event.uplinkDelta, event.downlinkDelta,
+                    )
+                }
+            }
+        }
+
+        override fun disconnected(message: String?) {
+            LogUtil.w("SingBoxCore", "Traffic event stream disconnected: $message")
+        }
+        override fun connected() = Unit
+        override fun setDefaultLogLevel(level: Int) = Unit
+        override fun clearLogs() = Unit
+        override fun writeLogs(messageList: LogIterator?) = Unit
+        override fun writeStatus(message: StatusMessage?) = Unit
+        override fun writeGroups(message: OutboundGroupIterator?) = Unit
+        override fun writeOutbounds(message: OutboundGroupItemIterator?) = Unit
+        override fun initializeClashMode(modeList: StringIterator?, currentMode: String?) = Unit
+        override fun updateClashMode(newMode: String?) = Unit
+    }
+
+    companion object {
+        fun version(): String = Libbox.version()
     }
 }

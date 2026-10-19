@@ -1,6 +1,5 @@
 package com.v2ray.ang.ui.main
 
-import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +9,11 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -20,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,16 +36,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.ui.checkupdate.UpdateAvailableDialog
-import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.QRCodeDialog
+import com.v2ray.ang.ui.compose.ConfirmDialog
 import com.v2ray.ang.util.Utils
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -66,23 +67,17 @@ fun MainScreen(
     val confirmRemove = uiState.confirmRemove
     val shareQRCodeBitmap = uiState.shareQRCodeBitmap
     val dashboardContentTopPadding =
-        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 16.dp
+        WindowInsets.statusBars.union(WindowInsets.displayCutout).asPaddingValues().calculateTopPadding() + 16.dp
     val navigationContentBottomPadding =
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+        WindowInsets.navigationBars.union(WindowInsets.displayCutout).asPaddingValues().calculateBottomPadding() +
             MainNavigationContentClearance
-    val rootView = LocalView.current
     val context = LocalContext.current
-    val darkTheme = LocalDarkTheme.current
     var selectedDestinationIndex by rememberSaveable { mutableStateOf(MainDestination.Dashboard.ordinal) }
     val selectedDestination = MainDestination.values()[selectedDestinationIndex]
+    val navigationBackdropBackground = rememberUpdatedState(MaterialTheme.colorScheme.background)
     val navigationBackdrop = rememberLayerBackdrop {
+        drawRect(navigationBackdropBackground.value)
         drawContent()
-    }
-
-    SideEffect {
-        val activity = rootView.context as? Activity ?: return@SideEffect
-        WindowCompat.getInsetsController(activity.window, rootView).isAppearanceLightStatusBars =
-            !darkTheme
     }
 
     val scope = rememberCoroutineScope()
@@ -141,6 +136,8 @@ fun MainScreen(
 
     LaunchedEffect(uiState.locateTarget) {
         val target = uiState.locateTarget ?: return@LaunchedEffect
+        showSearch = false
+        searchQuery = ""
         selectedDestinationIndex = MainDestination.Nodes.ordinal
         if (target.groupIndex !in 0 until pagerState.pageCount) {
             mainViewModel.onAction(MainAction.LocateHandled(target))
@@ -203,6 +200,15 @@ fun MainScreen(
         onDismissRemove = { showRemoveConfirm = null },
         onConfirmRemove = { guid -> showRemoveConfirm = null; onAction(MainAction.RemoveServer(guid)) }
     )
+    if (uiState.pendingHttpImport != null) {
+        ConfirmDialog(
+            title = stringResource(R.string.subscription_http_import_title),
+            message = stringResource(R.string.subscription_http_import_message),
+            confirmText = stringResource(R.string.subscription_http_import_confirm),
+            onConfirm = { onAction(MainAction.ConfirmHttpImport) },
+            onDismiss = { onAction(MainAction.DismissHttpImport) },
+        )
+    }
 
     if (shareTarget != null) {
         val (guid, profile, more) = shareTarget!!
@@ -237,6 +243,7 @@ fun MainScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .layerBackdrop(navigationBackdrop),
         ) {
             when (selectedDestination) {
@@ -268,7 +275,7 @@ fun MainScreen(
                             onSearchToggle = { show -> showSearch = show },
                             onMenuClick = {},
                             onAction = onAction,
-                            onDelAllConfig = { showDelAllConfirm = true },
+                            onDelAllConfig = { selectedGuid?.let { showRemoveConfirm = it } },
                             onDelDuplicateConfig = { showDelDuplicateConfirm = true },
                             onDelInvalidConfig = { showDelInvalidConfirm = true },
                             modifier = Modifier.fillMaxWidth(),

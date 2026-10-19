@@ -112,7 +112,6 @@ fun MainSettingsHub(
                 titleRes = R.string.settings_section_support,
                 accent = MaterialTheme.colorScheme.primary,
                 items = listOf(
-                    SettingsHubItem(R.drawable.ic_logcat_24dp, R.string.title_logcat, "logcat"),
                     SettingsHubItem(R.drawable.ic_check_update_24dp, R.string.update_check_for_update, "check_update"),
                 ),
                 onNavigate = onNavigate,

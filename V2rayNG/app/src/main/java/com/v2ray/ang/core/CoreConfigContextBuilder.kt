@@ -98,7 +98,7 @@ object CoreConfigContextBuilder {
      *
      * Invalid or empty targets are skipped and handled by fallback logic later.
      */
-    private fun resolveRoutingOutbounds(): List<CoreConfigContext.ResolvedOutbound> {
+    internal fun resolveRoutingOutbounds(): List<CoreConfigContext.ResolvedOutbound> {
         val rulesetItems = MmkvManager.decodeRoutingRulesets() ?: return emptyList()
         val resolvedOutbounds = mutableListOf<CoreConfigContext.ResolvedOutbound>()
         val processedTags = mutableSetOf<String>()
@@ -106,17 +106,17 @@ object CoreConfigContextBuilder {
         try {
             rulesetItems
                 .filter { it.enabled }
-                .mapNotNull { it.outboundTag.takeIf { tag -> tag.isNotBlank() } }
-                .filter { tag -> tag !in AppConfig.BUILTIN_OUTBOUND_TAGS }
-                .distinct()
-                .forEach { tag ->
+                .filter { RoutingTargets.tag(it) !in AppConfig.BUILTIN_OUTBOUND_TAGS }
+                .distinctBy(RoutingTargets::tag)
+                .forEach { rule ->
+                    val tag = RoutingTargets.tag(rule)
                     if (tag in processedTags) {
                         return@forEach
                     }
                     processedTags.add(tag)
 
                     try {
-                        val profile = SettingsManager.getServerViaRemarks(tag) ?: run {
+                        val profile = RoutingTargets.profile(rule) ?: run {
                             LogUtil.w(AppConfig.TAG, "Routing tag '$tag' has no matching profile — will fall back to proxy at routing time")
                             return@forEach
                         }
@@ -269,9 +269,10 @@ object CoreConfigContextBuilder {
         rulesetItems
             .asSequence()
             .filter { it.enabled }
+            .filter { it.process.isNullOrEmpty() }
             .filter { !it.domain.isNullOrEmpty() }
             .forEach { rule ->
-                val normalizedOutboundTag = when (rule.outboundTag) {
+                val normalizedOutboundTag = when (RoutingTargets.tag(rule)) {
                     AppConfig.TAG_DIRECT -> AppConfig.TAG_DIRECT
                     AppConfig.TAG_BLOCKED -> AppConfig.TAG_BLOCKED
                     else -> AppConfig.TAG_PROXY

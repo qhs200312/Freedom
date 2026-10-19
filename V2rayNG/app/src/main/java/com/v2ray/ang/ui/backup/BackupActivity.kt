@@ -44,11 +44,16 @@ import com.v2ray.ang.ui.compose.SettingsMenuItem
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 
 class BackupActivity : HelperBaseComponentActivity() {
+    companion object {
+        const val EXTRA_EXPORT_ALL = "export_all_profiles"
+    }
 
     private val viewModel: BackupViewModel by viewModels()
 
@@ -59,6 +64,9 @@ class BackupActivity : HelperBaseComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         observeViewModel()
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_EXPORT_ALL, false)) {
+            window.decorView.post { backupViaLocal() }
+        }
     }
 
     private fun observeViewModel() {
@@ -129,17 +137,20 @@ class BackupActivity : HelperBaseComponentActivity() {
     }
 
     private fun handleExportLocal(cachePath: String, targetUri: Uri) {
-        try {
-            contentResolver.openOutputStream(targetUri)?.use { output ->
-                File(cachePath).inputStream().use { input ->
-                    input.copyTo(output)
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val output = contentResolver.openOutputStream(targetUri) ?: error("Cannot open backup destination")
+                    output.use {
+                        File(cachePath).inputStream().use { input -> input.copyTo(it) }
+                    }
+                    File(cachePath).delete()
                 }
+                toastSuccess(R.string.toast_success)
+            } catch (e: Exception) {
+                LogUtil.e(AppConfig.TAG, "Failed to copy backup to Uri", e)
+                toastError(R.string.toast_failure)
             }
-            File(cachePath).delete()
-            toastSuccess(R.string.toast_success)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to copy backup to Uri", e)
-            toastError(R.string.toast_failure)
         }
     }
 

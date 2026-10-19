@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="menu_item_import_config_manually_anytls">添加 [AnyTLS]</string>
+    <string name="anytls_idle_check_interval">空闲会话检查间隔（默认 30s）</string>
+    <string name="anytls_idle_timeout">空闲会话超时（默认 30s）</string>
+    <string name="anytls_min_idle_session">最少保留空闲会话数（默认 0）</string>
+    <string name="anytls_client_metadata">客户端元数据</string>
+    <string name="anytls_invalid_settings">请检查密码、端口和空闲会话设置，时间需带单位，如 30s 或 1m。</string>
+</resources>

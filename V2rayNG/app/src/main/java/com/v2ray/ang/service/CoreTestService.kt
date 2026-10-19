@@ -97,6 +97,7 @@ class CoreTestService : Service() {
                 context = this,
                 guids = guidsList,
                 onlyTcp = message.onlyTcp,
+                pingOnly = message.pingOnly,
                 onEvent = { event -> handleWorkerEvent(event, message) { activeWorkers.remove(worker) } }
             )
             activeWorkers.add(worker)
@@ -120,13 +121,13 @@ class CoreTestService : Service() {
             }
 
             is RealPingEvent.Result -> {
-                MmkvManager.encodeServerTestDelayMillis(event.guid, event.delayMillis)
+                MmkvManager.encodeServerTestDelayMillis(event.guid, event.delayMillis, event.method)
                 MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, event.guid)
             }
 
             is RealPingEvent.Finish -> {
                 if(message.subscriptionId.isNotEmpty()){
-                    if (MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_REMOVE_INVALID_AFTER_TEST, false)) {
+                    if (!message.pingOnly && MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_REMOVE_INVALID_AFTER_TEST, false)) {
                         AngConfigManager.removeInvalidServer(message.subscriptionId)
                     }
 

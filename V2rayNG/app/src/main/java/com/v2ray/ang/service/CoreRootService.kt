@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.SystemClock
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.core.CoreServiceManager
@@ -59,10 +60,12 @@ class CoreRootService : Service(), ServiceControl {
         // Start the in-process core first (this also posts the foreground notification),
         // then install the root routing off the main thread.
         setupJob = CoroutineScope(Dispatchers.IO).launch {
+            val startTime = SystemClock.elapsedRealtime()
             // A killed root-service process or an APK update can leave its root helper and
             // policy rules alive. Remove that stale data path before probing the new core;
             // otherwise the probe period itself can leave the whole device offline.
             RootProxyManager.stop(this@CoreRootService)
+            LogUtil.i(AppConfig.TAG, "StartCore-Root: cleanup ${SystemClock.elapsedRealtime() - startTime}ms")
             if (stopping.get()) return@launch
             SettingsManager.refreshRuntimeSocksPort()
             try {
@@ -85,6 +88,7 @@ class CoreRootService : Service(), ServiceControl {
                 }
                 LogUtil.w(AppConfig.TAG, "StartCore-Root: connectivity check $attempt failed")
             }
+            LogUtil.i(AppConfig.TAG, "StartCore-Root: core checked ${SystemClock.elapsedRealtime() - startTime}ms")
             if (!coreReady) {
                 LogUtil.e(AppConfig.TAG, "StartCore-Root: core has no working outbound, stopping")
                 MessageHelper.sendMsg2UI(
@@ -99,7 +103,8 @@ class CoreRootService : Service(), ServiceControl {
             var started = false
             for (attempt in 1..2) {
                 if (attempt > 1) delay(500L)
-                if (RootProxyManager.start(this@CoreRootService)) {
+                if (stopping.get()) return@launch
+                if (RootProxyManager.start(this@CoreRootService, cleanupBeforeStart = attempt > 1)) {
                     started = true
                     break
                 }
@@ -112,7 +117,7 @@ class CoreRootService : Service(), ServiceControl {
                     AppConfig.MSG_STATE_START_SUCCESS,
                     ""
                 )
-                LogUtil.i(AppConfig.TAG, "StartCore-Root: root mode ready")
+                LogUtil.i(AppConfig.TAG, "StartCore-Root: root mode ready in ${SystemClock.elapsedRealtime() - startTime}ms")
 
             } else {
                 LogUtil.e(AppConfig.TAG, "StartCore-Root: failed to start root mode, stopping")

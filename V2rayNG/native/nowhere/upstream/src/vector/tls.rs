@@ -1,0 +1,279 @@
+// Copyright (C) 2026 NodePassProject <https://github.com/NodePassProject>
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! Shared TLS 1.3 client policy for Vector's TCP and QUIC carriers.
+
+use std::fmt;
+use std::sync::Arc;
+
+use anyhow::{Context, Result, anyhow, bail};
+use quinn::Connection;
+use quinn::crypto::rustls::{HandshakeData, QuicClientConfig};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::crypto::{
+    WebPkiSupportedAlgorithms, ring, verify_tls12_signature, verify_tls13_signature,
+};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{DigitallySignedStruct, SignatureScheme};
+use tokio::net::TcpStream;
+use tokio::time::timeout;
+use tokio_rustls::{TlsConnector, client::TlsStream};
+
+use crate::common::{AddressFamily, certificate_sha256, dial_tcp_with_policy, handshake_timeout};
+use crate::protocol::{ALPN, TLS_EXPORTER_LEN, TlsExporter};
+use crate::transport::{MorphKeys, MorphTcpStream};
+
+use super::config::PortalClientConfig;
+
+pub(crate) use crate::protocol::AUTH_EXPORTER_LABEL as EXPORTER_LABEL;
+
+#[derive(Clone)]
+pub(crate) struct ClientTls {
+    rustls: Arc<rustls::ClientConfig>,
+    server_name: ServerName<'static>,
+    morph_keys: Option<MorphKeys>,
+}
+
+impl ClientTls {
+    pub(crate) fn new(config: &PortalClientConfig) -> Result<Self> {
+        let provider = Arc::new(ring::default_provider());
+        let builder = rustls::ClientConfig::builder_with_provider(provider.clone())
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .context("vector::tls::ClientTls::new: failed to enable TLS 1.3")?;
+        let client = if let Some(pin) = &config.pin {
+            builder
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(PinnedCertificateVerification {
+                    pin: pin.clone(),
+                    algorithms: provider.signature_verification_algorithms,
+                }))
+                .with_no_client_auth()
+        } else {
+            let native = rustls_native_certs::load_native_certs();
+            if !native.errors.is_empty() {
+                bail!(
+                    "vector::tls::ClientTls::new: system root loading failed: {:?}",
+                    native.errors
+                );
+            }
+            let mut roots = rustls::RootCertStore::empty();
+            for certificate in native.certs {
+                roots
+                    .add(certificate)
+                    .context("vector::tls::ClientTls::new: invalid system root")?;
+            }
+            if roots.is_empty() {
+                bail!("vector::tls::ClientTls::new: no system trust roots available");
+            }
+            builder.with_root_certificates(roots).with_no_client_auth()
+        };
+        Self::with_config(config, client)
+    }
+
+    fn with_config(config: &PortalClientConfig, mut client: rustls::ClientConfig) -> Result<Self> {
+        client.alpn_protocols = vec![ALPN.to_vec()];
+        client.enable_early_data = false;
+
+        let server_name =
+            ServerName::try_from(config.sni.as_deref().unwrap_or(config.host()).to_owned())
+                .map_err(|_| anyhow!("vector::tls::ClientTls::new: invalid TLS server name"))?;
+        Ok(Self {
+            rustls: Arc::new(client),
+            server_name,
+            morph_keys: config.morph_keys.clone(),
+        })
+    }
+
+    pub(crate) fn quic_client_config(&self) -> Result<quinn::ClientConfig> {
+        let quic_crypto = QuicClientConfig::try_from(self.rustls.clone())
+            .map_err(|error| anyhow!("vector::tls::ClientTls::quic_client_config: {error}"))?;
+        Ok(quinn::ClientConfig::new(Arc::new(quic_crypto)))
+    }
+
+    pub(crate) fn quic_server_name(&self) -> String {
+        match &self.server_name {
+            ServerName::DnsName(name) => name.as_ref().to_owned(),
+            ServerName::IpAddress(address) => std::net::IpAddr::from(*address).to_string(),
+            _ => self.server_name.to_str().into_owned(),
+        }
+    }
+
+    pub(crate) async fn connect_tcp(
+        &self,
+        endpoint: &str,
+        dial_policy: &crate::common::DialPolicy,
+        family: AddressFamily,
+    ) -> Result<(TlsStream<MorphTcpStream<TcpStream>>, TlsExporter)> {
+        let stream = dial_tcp_with_policy(dial_policy, endpoint, handshake_timeout(), family)
+            .await
+            .with_context(|| format!("vector::tls::connect_tcp: failed to dial {endpoint}"))?;
+        stream
+            .set_nodelay(true)
+            .context("vector::tls::connect_tcp: failed to set TCP_NODELAY")?;
+        let connector = TlsConnector::from(self.rustls.clone());
+        let tls = timeout(handshake_timeout(), async {
+            let stream = MorphTcpStream::connect(stream, self.morph_keys.clone()).await?;
+            connector.connect(self.server_name.clone(), stream).await
+        })
+        .await
+        .context("vector::tls::connect_tcp: TLS handshake timeout")?
+        .context("vector::tls::connect_tcp: TLS handshake failed")?;
+        require_nw3(tls.get_ref().1.alpn_protocol())
+            .context("vector::tls::connect_tcp: invalid negotiated protocol")?;
+        let mut exporter = [0u8; TLS_EXPORTER_LEN];
+        tls.get_ref()
+            .1
+            .export_keying_material(&mut exporter, EXPORTER_LABEL, Some(&[]))
+            .context("vector::tls::connect_tcp: TLS exporter failed")?;
+        Ok((tls, exporter))
+    }
+}
+
+pub(crate) async fn fetch_certificate_fingerprint(config: &PortalClientConfig) -> Result<String> {
+    let endpoint = config
+        .tcp_endpoint()
+        .context("TCP carrier is not configured")?;
+    let provider = Arc::new(ring::default_provider());
+    let client = rustls::ClientConfig::builder_with_provider(provider.clone())
+        .with_protocol_versions(&[&rustls::version::TLS13])?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(FingerprintCertificateInspection {
+            algorithms: provider.signature_verification_algorithms,
+        }))
+        .with_no_client_auth();
+    let tls = ClientTls::with_config(config, client)?;
+    let (stream, _) = tls
+        .connect_tcp(
+            &config.remote.carrier_addr(endpoint),
+            &config.dial_policy,
+            endpoint.family,
+        )
+        .await?;
+    let certificate = stream
+        .get_ref()
+        .1
+        .peer_certificates()
+        .and_then(|chain| chain.first())
+        .context("Portal did not provide a TLS certificate")?;
+    Ok(certificate_sha256(certificate))
+}
+
+pub(crate) fn require_quic_nw3(connection: &Connection) -> Result<()> {
+    let handshake = connection
+        .handshake_data()
+        .ok_or_else(|| anyhow!("vector::tls: QUIC handshake data unavailable"))?
+        .downcast::<HandshakeData>()
+        .map_err(|_| anyhow!("vector::tls: unexpected QUIC handshake data"))?;
+    require_nw3(handshake.protocol.as_deref())
+        .context("vector::tls: invalid QUIC negotiated protocol")
+}
+
+fn require_nw3(alpn: Option<&[u8]>) -> Result<()> {
+    match alpn {
+        Some(ALPN) => Ok(()),
+        Some(_) => bail!("unsupported negotiated ALPN"),
+        None => bail!("peer did not negotiate ALPN"),
+    }
+}
+
+#[derive(Clone)]
+struct PinnedCertificateVerification {
+    pin: String,
+    algorithms: WebPkiSupportedAlgorithms,
+}
+
+impl fmt::Debug for PinnedCertificateVerification {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PinnedCertificateVerification")
+    }
+}
+
+impl ServerCertVerifier for PinnedCertificateVerification {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> std::result::Result<ServerCertVerified, rustls::Error> {
+        if certificate_sha256(end_entity) != self.pin {
+            return Err(rustls::Error::General(
+                "server certificate pin mismatch".to_owned(),
+            ));
+        }
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        certificate: &CertificateDer<'_>,
+        signature: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(message, certificate, signature, &self.algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        certificate: &CertificateDer<'_>,
+        signature: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(message, certificate, signature, &self.algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.algorithms.supported_schemes()
+    }
+}
+
+#[derive(Clone)]
+struct FingerprintCertificateInspection {
+    algorithms: WebPkiSupportedAlgorithms,
+}
+
+impl fmt::Debug for FingerprintCertificateInspection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("FingerprintCertificateInspection")
+    }
+}
+
+impl ServerCertVerifier for FingerprintCertificateInspection {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> std::result::Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        certificate: &CertificateDer<'_>,
+        signature: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(message, certificate, signature, &self.algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        certificate: &CertificateDer<'_>,
+        signature: &DigitallySignedStruct,
+    ) -> std::result::Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(message, certificate, signature, &self.algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.algorithms.supported_schemes()
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/vector/tls.rs"]
+mod tests;

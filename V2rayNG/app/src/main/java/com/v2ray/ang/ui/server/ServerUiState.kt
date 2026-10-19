@@ -63,6 +63,11 @@ class ServerUiState(
     verifyPeerCertByName: String = "",
     pinnedCA256: String = "",
     preferredCore: String = "AUTO",
+    nowhereMorph: Boolean = true,
+    anytlsIdleSessionCheckInterval: String = "",
+    anytlsIdleSessionTimeout: String = "",
+    anytlsMinIdleSession: String = "",
+    anytlsClientMetadata: String = "",
     isFetchingCert: Boolean = false
 ) {
     var configType by mutableStateOf(configType)
@@ -112,6 +117,11 @@ class ServerUiState(
     var verifyPeerCertByName by mutableStateOf(verifyPeerCertByName)
     var pinnedCA256 by mutableStateOf(pinnedCA256)
     var preferredCore by mutableStateOf(preferredCore)
+    var nowhereMorph by mutableStateOf(nowhereMorph)
+    var anytlsIdleSessionCheckInterval by mutableStateOf(anytlsIdleSessionCheckInterval)
+    var anytlsIdleSessionTimeout by mutableStateOf(anytlsIdleSessionTimeout)
+    var anytlsMinIdleSession by mutableStateOf(anytlsMinIdleSession)
+    var anytlsClientMetadata by mutableStateOf(anytlsClientMetadata)
     var isFetchingCert by mutableStateOf(isFetchingCert)
 
     fun toProfileItem(initialConfig: ProfileItem): ProfileItem {
@@ -179,6 +189,11 @@ class ServerUiState(
             echConfigList = echConfigList,
             verifyPeerCertByName = verifyPeerCertByName,
             pinnedCA256 = pinnedCA256,
+            nowhereMorph = nowhereMorph,
+            anytlsIdleSessionCheckInterval = anytlsIdleSessionCheckInterval.nullIfBlank(),
+            anytlsIdleSessionTimeout = anytlsIdleSessionTimeout.nullIfBlank(),
+            anytlsMinIdleSession = anytlsMinIdleSession.toIntOrNull(),
+            anytlsClientMetadata = anytlsClientMetadata.nullIfBlank(),
             preferredCore = if (configType in CoreSelector.configurableProtocols) {
                 preferredCore
             } else {
@@ -238,6 +253,11 @@ class ServerUiState(
                 echConfigList = initialConfig.echConfigList ?: "",
                 verifyPeerCertByName = initialConfig.verifyPeerCertByName ?: "",
                 pinnedCA256 = initialConfig.pinnedCA256 ?: "",
+                nowhereMorph = initialConfig.nowhereMorph,
+                anytlsIdleSessionCheckInterval = initialConfig.anytlsIdleSessionCheckInterval.orEmpty(),
+                anytlsIdleSessionTimeout = initialConfig.anytlsIdleSessionTimeout.orEmpty(),
+                anytlsMinIdleSession = initialConfig.anytlsMinIdleSession?.toString().orEmpty(),
+                anytlsClientMetadata = initialConfig.anytlsClientMetadata.orEmpty(),
                 preferredCore = initialConfig.preferredCore
                     ?: if (initialConfig.configType == EConfigType.HYSTERIA2) "SING_BOX" else "AUTO"
             )

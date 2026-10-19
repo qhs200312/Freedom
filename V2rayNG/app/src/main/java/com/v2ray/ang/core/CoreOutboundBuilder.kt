@@ -25,6 +25,8 @@ object CoreOutboundBuilder {
     /** Dispatches a profile to protocol-specific outbound builder. */
     fun convert(profileItem: ProfileItem): OutboundBean? {
         val outbound = when (profileItem.configType) {
+            EConfigType.NOWHERE -> error("Nowhere requires its local runtime bridge")
+            EConfigType.ANYTLS -> error("AnyTLS requires sing-box or its local runtime bridge")
             EConfigType.VMESS -> toOutboundVmess(profileItem)
             EConfigType.SHADOWSOCKS -> toOutboundShadowsocks(profileItem)
             EConfigType.SOCKS -> toOutboundSocks(profileItem)

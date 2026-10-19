@@ -12,4 +12,5 @@ data class RulesetItem(
     var protocol: List<String>? = null,
     var enabled: Boolean = true,
     var locked: Boolean? = false,
+    var outboundProfileId: String? = null,
 )

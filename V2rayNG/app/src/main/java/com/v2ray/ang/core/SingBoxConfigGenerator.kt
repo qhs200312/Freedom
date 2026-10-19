@@ -4,6 +4,8 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.NodeProfile
+import com.v2ray.ang.dto.CoreConfigContext
+import com.v2ray.ang.enums.CoreResolvedType
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.dto.entities.RulesetItem
@@ -36,9 +38,17 @@ object SingBoxConfigGenerator {
         profile: NodeProfile,
         ruleSetDir: String? = null,
         enableTun: Boolean = false,
+        onTrafficBindings: (Map<String, com.v2ray.ang.dto.NodeTrafficBinding>) -> Unit = {},
     ): String {
         val vpnConfig = SettingsManager.getCurrentVpnInterfaceAddressConfig()
-        val routingRules = MmkvManager.decodeRoutingRulesets().orEmpty()
+        val routingRules = MmkvManager.decodeRoutingRulesets().orEmpty().filter {
+            it.process.isNullOrEmpty() || SettingsManager.canUseProcessRouting()
+        }
+        val resolvedRouting = CoreConfigContextBuilder.resolveRoutingOutbounds()
+        require(unsupportedResolvedRoutingReason(resolvedRouting) == null) {
+            "Routing requires Xray policy groups or proxy chains"
+        }
+        onTrafficBindings(NodeTrafficBindings.resolve(profile.id, resolvedRouting, NodeTrafficBindings.storedProfiles()))
         return generate(
         profile = profile,
         socksPort = SettingsManager.getSocksPort(),
@@ -47,6 +57,7 @@ object SingBoxConfigGenerator {
         socksUsername = SettingsManager.getSocksUsername(),
         socksPassword = SettingsManager.getSocksPassword(),
         routingRules = routingRules,
+        routingProfiles = resolvedRouting.associate { it.tag to NodeProfile.from(it.resolvedProfiles.single()) },
         blockGoogleLocation = MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true),
         blockGoogleMaps = MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true),
         strictBlockGoogleMapsSdk = MmkvManager.decodeSettingsBool(
@@ -79,8 +90,20 @@ object SingBoxConfigGenerator {
         )
     }
 
-    fun unsupportedRoutingReason(): String? =
-        unsupportedRoutingReason(MmkvManager.decodeRoutingRulesets().orEmpty())
+    fun unsupportedRoutingReason(): String? {
+        val resolved = CoreConfigContextBuilder.resolveRoutingOutbounds()
+        return unsupportedResolvedRoutingReason(resolved) ?: unsupportedRoutingReason(
+            MmkvManager.decodeRoutingRulesets().orEmpty(),
+            resolved.associate { it.tag to NodeProfile.from(it.resolvedProfiles.single()) },
+        )
+    }
+
+    private fun unsupportedResolvedRoutingReason(resolved: List<CoreConfigContext.ResolvedOutbound>): String? =
+        if (resolved.any { outbound -> outbound.resolvedProfiles.any { it.configType == com.v2ray.ang.enums.EConfigType.NOWHERE } }) {
+            "Nowhere routing uses the Xray local bridge"
+        } else if (resolved.any { it.resolvedType != CoreResolvedType.NORMAL || it.resolvedProfiles.size != 1 }) {
+            "sing-box cannot preserve Xray policy groups or proxy chains"
+        } else null
 
     internal fun generate(
         profile: NodeProfile,
@@ -90,6 +113,7 @@ object SingBoxConfigGenerator {
         socksUsername: String? = null,
         socksPassword: String? = null,
         routingRules: List<RulesetItem> = emptyList(),
+        routingProfiles: Map<String, NodeProfile> = emptyMap(),
         blockGoogleLocation: Boolean = false,
         blockGoogleMaps: Boolean = false,
         strictBlockGoogleMapsSdk: Boolean = AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
@@ -103,12 +127,28 @@ object SingBoxConfigGenerator {
         tunDnsServers: List<String> = listOf("1.1.1.1"),
         tunRoutes: List<String> = listOf("0.0.0.0/0"),
         tunAddresses: List<String> = listOf("10.10.14.1/30"),
+        cacheFilePath: String? = null,
     ): String {
         require(CoreSelector.canGenerateSingBox(profile)) {
             "Profile contains Xray-only settings and cannot be represented by sing-box"
         }
-        val routingError = unsupportedRoutingReason(routingRules)
+        val routingError = unsupportedRoutingReason(routingRules, routingProfiles)
         require(routingError == null) { routingError.orEmpty() }
+        val normalizedRules = RoutingTargets.orderedRules(routingRules).filter {
+            it.process.isNullOrEmpty() || (enableTun && it.process.orEmpty().any(String::isNotBlank))
+        }.map { rule ->
+            val target = RoutingTargets.tag(rule)
+            rule.copy(
+                outboundTag = target.takeIf { it in AppConfig.BUILTIN_OUTBOUND_TAGS || it in routingProfiles }
+                    ?: AppConfig.TAG_PROXY,
+                outboundProfileId = null,
+            )
+        }
+        val usedTags = normalizedRules.filter { it.enabled }.map { it.outboundTag }.toSet()
+        val profiles = linkedMapOf(AppConfig.TAG_PROXY to profile).apply {
+            routingProfiles.filterKeys { it in usedTags && it !in AppConfig.BUILTIN_OUTBOUND_TAGS }
+                .forEach { (tag, node) -> put(tag, node) }
+        }
 
         val inboundUser = socksUsername?.let { username ->
             JsonObject().apply {
@@ -117,12 +157,20 @@ object SingBoxConfigGenerator {
             }
         }
         val root = JsonObject().apply {
+            cacheFilePath?.let { path ->
+                add("experimental", JsonObject().apply {
+                    add("cache_file", JsonObject().apply {
+                        addProperty("enabled", true)
+                        addProperty("path", path)
+                    })
+                })
+            }
             add("log", JsonObject().apply {
                 addProperty("level", logLevel)
             })
-            val needsServerResolver = !Utils.isPureIpAddress(profile.server)
+            val needsServerResolver = profiles.values.any { !Utils.isPureIpAddress(it.server) }
             if (localDnsEnabled || needsServerResolver) {
-                val dns = if (localDnsEnabled) buildDns(routingRules, remoteDnsServers, domesticDnsServers, false)
+                val dns = if (localDnsEnabled) buildDns(normalizedRules, remoteDnsServers, domesticDnsServers, false)
                     else JsonObject().apply {
                         add("servers", JsonArray())
                         addProperty("final", "bootstrap-local")
@@ -135,8 +183,16 @@ object SingBoxConfigGenerator {
                 }
                 add("dns", dns)
             }
-            if (profile.protocol == com.v2ray.ang.enums.EConfigType.WIREGUARD) {
-                add("endpoints", JsonArray().apply { add(wireGuardEndpoint(profile)) })
+            val endpoints = profiles.filterValues { it.protocol == com.v2ray.ang.enums.EConfigType.WIREGUARD }
+            if (endpoints.isNotEmpty()) {
+                add("endpoints", JsonArray().apply {
+                    endpoints.forEach { (tag, node) ->
+                        add(wireGuardEndpoint(node).apply {
+                            addProperty("tag", tag)
+                            if (!Utils.isPureIpAddress(node.server)) addProperty("domain_resolver", "bootstrap-local")
+                        })
+                    }
+                })
             }
             add("inbounds", JsonArray().apply {
                 if (enableTun) {
@@ -171,10 +227,13 @@ object SingBoxConfigGenerator {
                 }
             })
             add("outbounds", JsonArray().apply {
-                if (profile.protocol != com.v2ray.ang.enums.EConfigType.WIREGUARD) {
-                    add(proxyOutbound(profile).apply {
-                        if (needsServerResolver) addProperty("domain_resolver", "bootstrap-local")
-                    })
+                profiles.forEach { (tag, node) ->
+                    if (node.protocol != com.v2ray.ang.enums.EConfigType.WIREGUARD) {
+                        add(proxyOutbound(node).apply {
+                            addProperty("tag", tag)
+                            if (!Utils.isPureIpAddress(node.server)) addProperty("domain_resolver", "bootstrap-local")
+                        })
+                    }
                 }
                 add(JsonObject().apply {
                     addProperty("type", "direct")
@@ -182,7 +241,7 @@ object SingBoxConfigGenerator {
                 })
             })
             add("route", buildRoute(
-                routingRules,
+                normalizedRules,
                 blockGoogleLocation,
                 blockGoogleMaps,
                 strictBlockGoogleMapsSdk,
@@ -194,6 +253,18 @@ object SingBoxConfigGenerator {
     }
 
     private fun proxyOutbound(profile: NodeProfile): JsonObject = when (profile.protocol) {
+        com.v2ray.ang.enums.EConfigType.ANYTLS -> standardOutbound(profile, "anytls").apply {
+            addProperty("password", profile.password)
+            profile.anytlsIdleSessionCheckInterval?.takeIf(String::isNotBlank)?.let {
+                addProperty("idle_session_check_interval", it)
+            }
+            profile.anytlsIdleSessionTimeout?.takeIf(String::isNotBlank)?.let {
+                addProperty("idle_session_timeout", it)
+            }
+            profile.anytlsMinIdleSession?.let { addProperty("min_idle_session", it) }
+            profile.anytlsClientMetadata?.takeIf(String::isNotBlank)?.let { addProperty("client_metadata", it) }
+            add("tls", tlsOptions(profile))
+        }
         com.v2ray.ang.enums.EConfigType.HYSTERIA2 -> hysteria2Outbound(profile)
         com.v2ray.ang.enums.EConfigType.VMESS -> standardOutbound(profile, "vmess").apply {
             addProperty("uuid", profile.password)
@@ -375,13 +446,17 @@ object SingBoxConfigGenerator {
         return "${trimmed.toIntOrNull()?.coerceAtLeast(5) ?: 30}s"
     }
 
-    private fun unsupportedRoutingReason(rules: List<RulesetItem>): String? {
+    internal fun unsupportedRoutingReason(
+        rules: List<RulesetItem>,
+        routingProfiles: Map<String, NodeProfile> = emptyMap(),
+    ): String? {
         rules.filter { it.enabled }.forEach { rule ->
-            if (rule.outboundTag !in AppConfig.BUILTIN_OUTBOUND_TAGS) {
-                return "sing-box cannot map custom routing outbound '${rule.outboundTag}'"
+            val target = routingProfiles[RoutingTargets.tag(rule)]
+            if (target != null && !CoreSelector.canGenerateSingBox(target)) {
+                return "sing-box cannot represent routing node '${target.remarks}'"
             }
-            if (!rule.process.isNullOrEmpty()) {
-                return "sing-box SOCKS data plane cannot preserve process routing rule '${rule.remarks}'"
+            if (rule.process.orEmpty().contains(AppConfig.UNIDENTIFIED_PACKAGE)) {
+                return "Unidentified application matching requires Xray"
             }
             rule.domain.orEmpty().forEach { value ->
                 if (value.startsWith("geosite:", true) &&
@@ -439,7 +514,7 @@ object SingBoxConfigGenerator {
             add("rules", JsonArray().apply {
                 val domesticTag = domesticTags.first()
                 rules.asSequence()
-                    .filter { it.enabled && it.outboundTag == AppConfig.TAG_DIRECT }
+                    .filter { it.enabled && it.process.isNullOrEmpty() && it.outboundTag == AppConfig.TAG_DIRECT }
                     .mapNotNull { buildDnsDomainRule(it.domain.orEmpty(), domesticTag) }
                     .forEach(::add)
             })
@@ -551,16 +626,6 @@ object SingBoxConfigGenerator {
             addProperty("action", "sniff")
             add("sniffer", JsonArray().apply { add("stun") })
         })
-        outputRules.add(JsonObject().apply {
-            addProperty("protocol", "stun")
-            addProperty("action", "route")
-            addProperty("outbound", AppConfig.TAG_PROXY)
-        })
-        convertRule(RulesetItem(
-            domain = stunDomains,
-            network = "udp",
-            outboundTag = AppConfig.TAG_PROXY,
-        ))?.let(outputRules::add)
         if (blockGoogleLocation) {
             outputRules.add(domainRule(AppConfig.GEMINI_LIVE_DOMAINS, AppConfig.TAG_PROXY, "443"))
             outputRules.add(domainRule(AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS, "block", "443"))
@@ -573,9 +638,21 @@ object SingBoxConfigGenerator {
             ))
             outputRules.add(domainRule(AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS, "block", "443"))
         }
+        rules.filter { it.enabled && !it.process.isNullOrEmpty() }
+            .forEach { convertRule(it)?.let(outputRules::add) }
+        outputRules.add(JsonObject().apply {
+            addProperty("protocol", "stun")
+            addProperty("action", "route")
+            addProperty("outbound", AppConfig.TAG_PROXY)
+        })
+        convertRule(RulesetItem(
+            domain = stunDomains,
+            network = "udp",
+            outboundTag = AppConfig.TAG_PROXY,
+        ))?.let(outputRules::add)
 
         var finalOutbound = "proxy"
-        rules.filter { it.enabled }.forEach { rule ->
+        rules.filter { it.enabled && it.process.isNullOrEmpty() }.forEach { rule ->
             val isCatchAll = rule.domain.isNullOrEmpty() && rule.ip.isNullOrEmpty() &&
                 rule.process.isNullOrEmpty() && rule.protocol.isNullOrEmpty() &&
                 rule.network.isNullOrBlank() && (rule.port == null || rule.port == "0-65535")
@@ -589,6 +666,7 @@ object SingBoxConfigGenerator {
             add("rules", outputRules)
             addProperty("final", if (finalOutbound == AppConfig.TAG_BLOCKED) "direct" else finalOutbound)
             addProperty("auto_detect_interface", true)
+            if (rules.any { it.enabled && !it.process.isNullOrEmpty() }) addProperty("find_process", true)
             val requiredRuleSets = requiredRuleSets(rules)
             if (requiredRuleSets.isNotEmpty()) {
                 require(!ruleSetDir.isNullOrBlank()) { "sing-box rule-set directory is unavailable" }
@@ -627,6 +705,10 @@ object SingBoxConfigGenerator {
     private fun convertRule(rule: RulesetItem): JsonObject? {
         val result = JsonObject().apply {
             addDomainConditions(this, rule.domain.orEmpty())
+            rule.process?.map(String::trim)?.filter(String::isNotEmpty)?.distinct()?.takeIf { it.isNotEmpty() }?.let {
+                add("package_name", JsonArray().apply { it.forEach(::add) })
+                add("inbound", JsonArray().apply { add("tun-in") })
+            }
 
             val ipCidr = JsonArray()
             rule.ip.orEmpty().forEach { value ->

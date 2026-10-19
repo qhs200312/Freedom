@@ -5,5 +5,6 @@ data class ConfigResult(
     var guid: String? = null,
     var content: String = "",
     var errorMessage: String = "",
+    val trafficBindings: Map<String, NodeTrafficBinding> = emptyMap(),
 )
 

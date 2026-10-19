@@ -21,6 +21,9 @@ data class MainUiState(
     val statusText: String = "",
     val selectedServerName: String = "",
     val selectedServerAddress: String = "",
+    val selectedServerProtocol: String = "",
+    val selectedServerDelayMillis: Long? = null,
+    val pendingHttpImport: String? = null,
     val traffic: TrafficSnapshot = TrafficSnapshot(),
     val geoLocation: GeoLocation? = null,
     val isLocating: Boolean = false,
@@ -51,6 +54,7 @@ sealed interface MainAction {
     data object SortByTestResults : MainAction
     data object UpdateSubscriptions : MainAction
     data object ExportAll : MainAction
+    data object ExportSelected : MainAction
 
     data object ImportQRcode : MainAction
     data object ImportClipboard : MainAction
@@ -70,6 +74,8 @@ sealed interface MainAction {
     data object DismissQRCodeDialog : MainAction
 
     data class ImportBatchConfig(val configText: String) : MainAction
+    data object ConfirmHttpImport : MainAction
+    data object DismissHttpImport : MainAction
 
     data class LocateHandled(val target: LocateTarget) : MainAction
 }

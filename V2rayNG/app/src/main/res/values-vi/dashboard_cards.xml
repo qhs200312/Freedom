@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_traffic_information">Thông tin lưu lượng</string>
+    <string name="home_runtime_status">Trạng thái hoạt động</string>
+</resources>

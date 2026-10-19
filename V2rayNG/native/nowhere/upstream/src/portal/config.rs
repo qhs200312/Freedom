@@ -1,0 +1,158 @@
+// Copyright (C) 2026 NodePassProject <https://github.com/NodePassProject>
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! Immutable, startup-validated Portal runtime configuration.
+
+use std::time::Duration;
+
+use anyhow::{Context, Result, bail};
+use tokio::sync::Semaphore;
+
+const DEFAULT_QUIC_UDP_QUEUE_BYTES: usize = 4 * 1024 * 1024;
+
+const DEFAULT_TCP_DATA_BUF_SIZE: usize = 32 * 1024;
+const DEFAULT_UDP_DATA_BUF_SIZE: usize = 64 * 1024;
+const DEFAULT_TCP_DIAL_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_UDP_DIAL_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_TCP_READ_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_UDP_IDLE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_RELOAD_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PortalRuntimeConfig {
+    pub(crate) udp_queue_bytes: usize,
+    pub(crate) tcp_data_buf_size: usize,
+    pub(crate) udp_data_buf_size: usize,
+    pub(crate) tcp_dial_timeout: Duration,
+    pub(crate) udp_dial_timeout: Duration,
+    pub(crate) tcp_read_timeout: Duration,
+    pub(crate) udp_idle_timeout: Duration,
+    pub(crate) handshake_timeout: Duration,
+    pub(crate) shutdown_timeout: Duration,
+    pub(crate) reload_interval: Duration,
+}
+
+impl PortalRuntimeConfig {
+    pub(crate) fn from_env() -> Result<Self> {
+        Self::from_source(|name| match std::env::var(name) {
+            Ok(value) => Ok(Some(value)),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(std::env::VarError::NotUnicode(value)) => {
+                bail!("portal::config: {name} is not valid Unicode: {value:?}")
+            }
+        })
+    }
+
+    fn from_source<F>(mut source: F) -> Result<Self>
+    where
+        F: FnMut(&str) -> Result<Option<String>>,
+    {
+        let udp_queue_bytes = read_usize(
+            &mut source,
+            "NOW_QUIC_UDP_QUEUE_BYTES",
+            DEFAULT_QUIC_UDP_QUEUE_BYTES,
+            Semaphore::MAX_PERMITS.min(u32::MAX as usize),
+        )?;
+        let tcp_data_buf_size = read_usize(
+            &mut source,
+            "NOW_TCP_DATA_BUF_SIZE",
+            DEFAULT_TCP_DATA_BUF_SIZE,
+            isize::MAX as usize,
+        )?;
+        let udp_data_buf_size = read_usize(
+            &mut source,
+            "NOW_UDP_DATA_BUF_SIZE",
+            DEFAULT_UDP_DATA_BUF_SIZE,
+            isize::MAX as usize,
+        )?;
+        let tcp_dial_timeout = read_duration(
+            &mut source,
+            "NOW_TCP_DIAL_TIMEOUT",
+            DEFAULT_TCP_DIAL_TIMEOUT,
+        )?;
+        let udp_dial_timeout = read_duration(
+            &mut source,
+            "NOW_UDP_DIAL_TIMEOUT",
+            DEFAULT_UDP_DIAL_TIMEOUT,
+        )?;
+        let tcp_read_timeout = read_duration(
+            &mut source,
+            "NOW_TCP_READ_TIMEOUT",
+            DEFAULT_TCP_READ_TIMEOUT,
+        )?;
+        let udp_idle_timeout = read_duration(
+            &mut source,
+            "NOW_UDP_IDLE_TIMEOUT",
+            DEFAULT_UDP_IDLE_TIMEOUT,
+        )?;
+        quinn::IdleTimeout::try_from(udp_idle_timeout)
+            .context("portal::config: NOW_UDP_IDLE_TIMEOUT exceeds QUIC implementation limit")?;
+        let handshake_timeout = read_duration(
+            &mut source,
+            "NOW_HANDSHAKE_TIMEOUT",
+            DEFAULT_HANDSHAKE_TIMEOUT,
+        )?;
+        let shutdown_timeout = read_duration(
+            &mut source,
+            "NOW_SHUTDOWN_TIMEOUT",
+            DEFAULT_SHUTDOWN_TIMEOUT,
+        )?;
+        let reload_interval =
+            read_duration(&mut source, "NOW_RELOAD_INTERVAL", DEFAULT_RELOAD_INTERVAL)?;
+
+        Ok(Self {
+            udp_queue_bytes,
+            tcp_data_buf_size,
+            udp_data_buf_size,
+            tcp_dial_timeout,
+            udp_dial_timeout,
+            tcp_read_timeout,
+            udp_idle_timeout,
+            handshake_timeout,
+            shutdown_timeout,
+            reload_interval,
+        })
+    }
+}
+
+fn read_usize<F>(source: &mut F, name: &str, default: usize, max: usize) -> Result<usize>
+where
+    F: FnMut(&str) -> Result<Option<String>>,
+{
+    let Some(raw) = source(name)? else {
+        return Ok(default);
+    };
+    let value = raw
+        .parse::<usize>()
+        .with_context(|| format!("portal::config: invalid {name}={raw:?}"))?;
+    if value == 0 || value > max {
+        bail!("portal::config: {name} must be in 1..={max}: {raw:?}");
+    }
+    Ok(value)
+}
+
+fn read_duration<F>(source: &mut F, name: &str, default: Duration) -> Result<Duration>
+where
+    F: FnMut(&str) -> Result<Option<String>>,
+{
+    let Some(raw) = source(name)? else {
+        return Ok(default);
+    };
+    let value = humantime::parse_duration(&raw)
+        .with_context(|| format!("portal::config: invalid {name}={raw:?}"))?;
+    if value.is_zero() {
+        bail!("portal::config: {name} must be greater than zero: {raw:?}");
+    }
+    if tokio::time::Instant::now().checked_add(value).is_none()
+        || std::time::Instant::now().checked_add(value).is_none()
+    {
+        bail!("portal::config: {name} exceeds timer implementation limit: {raw:?}");
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+#[path = "../tests/portal/config.rs"]
+mod tests;

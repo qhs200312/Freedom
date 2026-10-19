@@ -1,6 +1,10 @@
 package com.v2ray.ang.ui.compose
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
+import android.graphics.Color as AndroidColor
+import android.os.Build
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -156,8 +160,19 @@ fun AppTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val activity = view.context as? Activity ?: return@SideEffect
+            val activity = view.context as? ComponentActivity ?: return@SideEffect
+            activity.enableEdgeToEdge(
+                statusBarStyle = if (darkTheme) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+                    else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+                navigationBarStyle = if (darkTheme) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+                    else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.argb(128, 0, 0, 0)),
+            )
             val window = activity.window
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isStatusBarContrastEnforced = false
+                // Older three-button navigation needs a contrast scrim for visible buttons.
+                window.isNavigationBarContrastEnforced = true
+            }
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme
                 isAppearanceLightNavigationBars = !darkTheme

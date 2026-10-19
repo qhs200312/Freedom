@@ -1,0 +1,49 @@
+[package]
+name = "nowhere"
+version = "3.0.0"
+edition = "2024"
+description = "TCP and UDP relay over TLS and QUIC"
+license = "GPL-3.0-only"
+repository = "https://github.com/NodePassProject/Nowhere"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.104"
+bytes = "1.12.1"
+chacha20 = "0.10.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+getrandom = "0.4.3"
+hmac = "0.13.0"
+humantime = "2.4.0"
+libc = "0.2.189"
+percent-encoding = "2.3.2"
+quinn = { version = "0.11.11", default-features = false, features = ["bloom", "log", "runtime-tokio", "rustls-ring"] }
+rcgen = { version = "0.14.9", default-features = false, features = ["crypto", "ring"] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "0.8.4"
+rustls-pemfile = "2.2.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+socket2 = "0.6.5"
+subtle = "2.6.1"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync", "signal"] }
+tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring"] }
+tokio-util = "0.7.19"
+url = "2.5.8"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

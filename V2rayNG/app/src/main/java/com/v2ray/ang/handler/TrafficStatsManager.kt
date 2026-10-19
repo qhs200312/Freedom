@@ -37,6 +37,8 @@ object TrafficStatsManager {
     private var totalDownlink = 0L
     private var lastPersistTime = 0L
     private var broadcastContext: Context? = null
+    private var nodeLedger = NodeTrafficLedger()
+    private var generation = 0L
 
     val snapshot: StateFlow<TrafficSnapshot>
         get() {
@@ -48,6 +50,7 @@ object TrafficStatsManager {
     fun start(context: Context) {
         ensureLoaded()
         if (pollingJob?.isActive == true) return
+        val pollingGeneration = ++generation
         broadcastContext = context.applicationContext
 
         sessionUplink = 0L
@@ -76,14 +79,19 @@ object TrafficStatsManager {
                 previousQueryTime = queryTime
 
                 try {
-                    publish(CoreServiceManager.queryAllOutboundTrafficStats(), elapsedSeconds)
-                    broadcastSnapshot()
+                    val stats = CoreServiceManager.queryAllOutboundTrafficStats()
+                    synchronized(this@TrafficStatsManager) {
+                        if (pollingGeneration == generation) {
+                            publish(stats, elapsedSeconds)
+                            broadcastSnapshot()
+                        }
+                    }
                 } catch (error: Exception) {
                     LogUtil.e(AppConfig.TAG, "Failed to query traffic stats", error)
                 }
 
                 if (queryTime - lastPersistTime >= PERSIST_INTERVAL_MS) {
-                    persistTotals()
+                    synchronized(this@TrafficStatsManager) { persistTotals() }
                     lastPersistTime = queryTime
                 }
                 delay(QUERY_INTERVAL_MS)
@@ -92,9 +100,11 @@ object TrafficStatsManager {
     }
 
     @Synchronized
-    fun stop() {
+    fun stop(finalStats: List<OutboundTrafficStat> = emptyList()) {
+        generation++
         pollingJob?.cancel()
         pollingJob = null
+        if (finalStats.isNotEmpty()) publish(finalStats, QUERY_INTERVAL_MS / 1000.0)
         persistTotals()
         _snapshot.update {
             it.copy(
@@ -107,6 +117,7 @@ object TrafficStatsManager {
         broadcastSnapshot()
     }
 
+    @Synchronized
     internal fun publish(stats: List<OutboundTrafficStat>, elapsedSeconds: Double) {
         var proxyUp = 0L
         var proxyDown = 0L
@@ -114,17 +125,19 @@ object TrafficStatsManager {
         var directDown = 0L
 
         stats.forEach { stat ->
+            if (!stat.countInTotal || stat.value <= 0L) return@forEach
             when {
                 stat.tag == AppConfig.TAG_DIRECT && stat.direction == AppConfig.UPLINK ->
                     directUp += stat.value
                 stat.tag == AppConfig.TAG_DIRECT && stat.direction == AppConfig.DOWNLINK ->
                     directDown += stat.value
-                stat.tag.startsWith(AppConfig.TAG_PROXY) && stat.direction == AppConfig.UPLINK ->
+                (stat.profileIds.isNotEmpty() || stat.tag.startsWith(AppConfig.TAG_PROXY)) && stat.direction == AppConfig.UPLINK ->
                     proxyUp += stat.value
-                stat.tag.startsWith(AppConfig.TAG_PROXY) && stat.direction == AppConfig.DOWNLINK ->
+                (stat.profileIds.isNotEmpty() || stat.tag.startsWith(AppConfig.TAG_PROXY)) && stat.direction == AppConfig.DOWNLINK ->
                     proxyDown += stat.value
             }
         }
+        nodeLedger.record(stats)
 
         val uplink = proxyUp + directUp
         val downlink = proxyDown + directDown
@@ -142,6 +155,7 @@ object TrafficStatsManager {
             sessionDownlink = sessionDownlink,
             totalUplink = totalUplink,
             totalDownlink = totalDownlink,
+            nodeTotals = nodeLedger.snapshot(),
         )
     }
 
@@ -150,9 +164,11 @@ object TrafficStatsManager {
         if (loaded) return
         totalUplink = MmkvManager.decodeSettingsLong(KEY_TOTAL_UPLINK, 0L)
         totalDownlink = MmkvManager.decodeSettingsLong(KEY_TOTAL_DOWNLINK, 0L)
+        nodeLedger = NodeTrafficLedger(NodeTrafficStore.load())
         _snapshot.value = TrafficSnapshot(
             totalUplink = totalUplink,
             totalDownlink = totalDownlink,
+            nodeTotals = nodeLedger.snapshot(),
         )
         loaded = true
     }
@@ -161,6 +177,7 @@ object TrafficStatsManager {
         if (!loaded) return
         MmkvManager.encodeSettings(KEY_TOTAL_UPLINK, totalUplink)
         MmkvManager.encodeSettings(KEY_TOTAL_DOWNLINK, totalDownlink)
+        nodeLedger.persist(NodeTrafficStore::save)
     }
 
     private fun broadcastSnapshot() {

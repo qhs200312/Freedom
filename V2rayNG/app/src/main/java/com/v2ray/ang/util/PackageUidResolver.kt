@@ -15,10 +15,11 @@ object PackageUidResolver {
 
     fun packageNamesToUids(context: Context, packageNames: List<String>): List<String> {
         return packageNames.mapNotNull { pkg ->
-            packageUidCache[pkg] ?: resolveUid(context, pkg)?.also { uid ->
+            // Re-resolve at configuration time: uninstall/reinstall may change a package's UID.
+            resolveUid(context, pkg)?.also { uid ->
                 packageUidCache[pkg] = uid
-            }
-        }
+            } ?: run { packageUidCache.remove(pkg); null }
+        }.distinct()
     }
 
     fun uidsToPackageNames(uids: List<String>): List<String> {

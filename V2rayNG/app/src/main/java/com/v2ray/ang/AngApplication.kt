@@ -7,9 +7,10 @@ import android.os.Build
 import android.os.Process
 import androidx.work.Configuration
 import androidx.work.WorkManager
-import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SecureStorage
+import com.v2ray.ang.handler.SensitiveCache
 import com.v2ray.ang.ui.compose.ThemeManager
 
 class AngApplication : Application() {
@@ -36,7 +37,7 @@ class AngApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        MMKV.initialize(this)
+        SecureStorage.initialize(this)
 
         // This Application is created in every declared process. The VPN/core process only
         // needs MMKV; repeating WorkManager setup, rule initialization and data migrations there
@@ -45,12 +46,19 @@ class AngApplication : Application() {
 
         // Initialize WorkManager with the custom configuration
         WorkManager.initialize(this, workManagerConfiguration)
+        SensitiveCache.cleanup(this)
 
+        initializeUiStorage()
+    }
+
+    fun initializeUiStorage(): Boolean {
+        if (SecureStorage.isUnavailable) return false
         // Ensure critical preference defaults are present in MMKV early
         SettingsManager.initApp(this)
 
         // Initialize theme state from MMKV
         ThemeManager.refresh()
+        return true
     }
 
     private fun isMainProcess(): Boolean {

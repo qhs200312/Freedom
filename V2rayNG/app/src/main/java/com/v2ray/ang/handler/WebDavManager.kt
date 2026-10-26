@@ -1,5 +1,6 @@
 package com.v2ray.ang.handler
 
+import android.net.Uri
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.util.LogUtil
@@ -12,7 +13,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URL
 import java.util.concurrent.TimeUnit
 
 object WebDavManager {
@@ -27,6 +27,7 @@ object WebDavManager {
     fun init(config: WebDavConfig) {
         cfg = config
         client = OkHttpClient.Builder()
+            .followSslRedirects(false)
             .connectTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(config.timeoutSeconds, TimeUnit.SECONDS)
@@ -97,10 +98,19 @@ object WebDavManager {
                     return@withContext false
                 }
 
+                if (resp.body.contentLength() > 256L * 1024 * 1024) return@withContext false
                 resp.body.byteStream().use { input ->
                     destFile.parentFile?.mkdirs()
                     FileOutputStream(destFile).use { fos ->
-                        input.copyTo(fos)
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            total += read
+                            if (total > 256L * 1024 * 1024) throw java.io.IOException("Backup too large")
+                            fos.write(buffer, 0, read)
+                        }
                     }
                 }
 
@@ -129,7 +139,11 @@ object WebDavManager {
         val basePathConfigured = cfg?.remoteBasePath?.trim('/')?.takeIf { it.isNotEmpty() }
         val basePath = basePathConfigured ?: AppConfig.WEBDAV_BACKUP_DIR
         val rel = remoteFileName.trimStart('/')
-        return if (basePath.isEmpty()) "$base/$rel" else "$base/$basePath/$rel"
+        val builder = Uri.parse(base).buildUpon()
+        (basePath.split('/') + rel.split('/')).filter { it.isNotEmpty() }.forEach {
+            builder.appendPath(it)
+        }
+        return builder.build().toString()
     }
 
     /**
@@ -158,12 +172,11 @@ object WebDavManager {
     private fun ensureRemoteDirs(dirUrl: String) {
         try {
             val cl = client ?: return
-            val url = URL(dirUrl)
-            val segments = url.path.split("/").filter { it.isNotEmpty() }
-            var accum = ""
+            val uri = Uri.parse(dirUrl)
+            val segments = uri.pathSegments
+            val builder = uri.buildUpon().path(null).clearQuery().fragment(null)
             for (seg in segments) {
-                accum += "/$seg"
-                val mkUrl = URL(url.protocol, url.host, if (url.port == -1) -1 else url.port, accum).toString()
+                val mkUrl = builder.appendPath(seg).build().toString()
                 try {
                     val req = applyAuth(Request.Builder().url(mkUrl).method("MKCOL", null)).build()
                     cl.newCall(req).execute().use { resp ->

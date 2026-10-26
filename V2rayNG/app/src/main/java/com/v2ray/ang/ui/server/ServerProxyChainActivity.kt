@@ -68,8 +68,8 @@ class ServerProxyChainActivity : BaseComponentActivity() {
     private lateinit var initialRemarks: String
     private lateinit var initialMembers: List<String>
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
 
         allRemarks = SettingsManager.getProfileRemarks(
             excludeConfigTypes = setOf(EConfigType.CUSTOM, EConfigType.POLICYGROUP, EConfigType.PROXYCHAIN)

@@ -57,8 +57,8 @@ class PerAppProxyActivity : BaseComponentActivity() {
 
     private val viewModel: PerAppProxyViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         viewModel.loadApps(this)
     }
 

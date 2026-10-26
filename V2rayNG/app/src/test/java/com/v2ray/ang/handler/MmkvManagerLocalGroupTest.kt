@@ -10,7 +10,6 @@ import org.junit.Test
 import org.mockito.Mockito
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
@@ -19,8 +18,8 @@ class MmkvManagerLocalGroupTest {
     fun emptyLocalGroupIsRemovedAndRestoredOnlyWhenLocalNodesExist() {
         val data = mutableMapOf<String, MutableMap<String, String>>()
         val storages = mutableMapOf<String, MMKV>()
-        Mockito.mockStatic(MMKV::class.java).use { factory ->
-            factory.`when`<MMKV> { MMKV.mmkvWithID(any<String>(), eq(MMKV.MULTI_PROCESS_MODE)) }
+        Mockito.mockStatic(SecureStorage::class.java).use { factory ->
+            factory.`when`<MMKV> { SecureStorage.open(any<String>()) }
                 .thenAnswer { call ->
                     val id = call.getArgument<String>(0)
                     storages.getOrPut(id) { storage(data.getOrPut(id) { mutableMapOf() }) }

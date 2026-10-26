@@ -38,8 +38,8 @@ import com.v2ray.ang.util.Utils
 
 class AboutActivity : BaseComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
     }
 
     @Composable

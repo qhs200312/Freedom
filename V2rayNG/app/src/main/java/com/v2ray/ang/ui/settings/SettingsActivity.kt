@@ -52,8 +52,8 @@ class SettingsActivity : BaseComponentActivity() {
 
     private val viewModel: SettingsViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
     }
 
     @Composable
@@ -235,14 +235,14 @@ fun SettingsScreen(
     var domesticDns by rememberMmkvString(AppConfig.PREF_DOMESTIC_DNS, "")
     var dnsHosts by rememberMmkvString(AppConfig.PREF_DNS_HOSTS, "")
     var coreLogLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
-    var vmessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VMESS)!!, "XRAY")
-    var vlessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VLESS)!!, "XRAY")
-    var trojanDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.TROJAN)!!, "XRAY")
-    var shadowsocksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SHADOWSOCKS)!!, "XRAY")
-    var socksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SOCKS)!!, "XRAY")
-    var httpDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HTTP)!!, "XRAY")
-    var wireGuardDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.WIREGUARD)!!, "XRAY")
-    var hy2DefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HYSTERIA2)!!, "SING_BOX")
+    var vmessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VMESS) ?: "", "XRAY")
+    var vlessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VLESS) ?: "", "XRAY")
+    var trojanDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.TROJAN) ?: "", "XRAY")
+    var shadowsocksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SHADOWSOCKS) ?: "", "XRAY")
+    var socksDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.SOCKS) ?: "", "XRAY")
+    var httpDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HTTP) ?: "", "XRAY")
+    var wireGuardDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.WIREGUARD) ?: "", "XRAY")
+    var hy2DefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.HYSTERIA2) ?: "", "SING_BOX")
     var outboundResolveMethod by rememberMmkvString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "0")
 
     var isBooted by rememberMmkvBool(AppConfig.PREF_IS_BOOTED, false)
@@ -511,6 +511,22 @@ fun SettingsScreen(
                     values = coreValues,
                     selectedValue = hy2DefaultCore,
                     onSelected = { hy2DefaultCore = it }
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "AnyTLS"),
+                    entries = listOf(stringResource(R.string.core_anytls_fixed)),
+                    values = listOf("SING_BOX"),
+                    selectedValue = "SING_BOX",
+                    onSelected = {},
+                    enabled = false,
+                )
+                SettingsListItem(
+                    title = stringResource(R.string.title_pref_protocol_default_core, "Nowhere"),
+                    entries = listOf(stringResource(R.string.core_nowhere_fixed)),
+                    values = listOf("XRAY"),
+                    selectedValue = "XRAY",
+                    onSelected = {},
+                    enabled = false,
                 )
                 SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_sniffing_enabled),

@@ -40,11 +40,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
+import com.v2ray.ang.handler.VerifiedUpdateManager
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.ui.checkupdate.UpdateAvailableDialog
 import com.v2ray.ang.ui.compose.QRCodeDialog
 import com.v2ray.ang.ui.compose.ConfirmDialog
-import com.v2ray.ang.util.Utils
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
@@ -210,6 +210,16 @@ fun MainScreen(
         )
     }
 
+    if (uiState.pendingExternalImport != null) {
+        ConfirmDialog(
+            title = stringResource(R.string.external_import_title),
+            message = stringResource(R.string.external_import_message),
+            confirmText = stringResource(R.string.external_import_confirm),
+            onConfirm = { onAction(MainAction.ConfirmExternalImport) },
+            onDismiss = { onAction(MainAction.DismissExternalImport) },
+        )
+    }
+
     if (shareTarget != null) {
         val (guid, profile, more) = shareTarget!!
         ShareMethodDialog(
@@ -230,7 +240,7 @@ fun MainScreen(
             onDismiss = mainViewModel::dismissAvailableUpdate,
             onUpdate = {
                 mainViewModel.dismissAvailableUpdate()
-                result.downloadUrl?.let { Utils.openUri(context, it) }
+                scope.launch { VerifiedUpdateManager.downloadAndInstall(context, result) }
             },
         )
     }

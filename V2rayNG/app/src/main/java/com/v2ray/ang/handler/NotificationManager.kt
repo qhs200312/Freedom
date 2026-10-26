@@ -18,6 +18,7 @@ import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.dto.TrafficSnapshot
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.toSpeedString
+import com.v2ray.ang.receiver.NotificationStopReceiver
 import com.v2ray.ang.ui.main.MainActivity
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +30,6 @@ import kotlinx.coroutines.launch
 object NotificationManager {
     private const val NOTIFICATION_ID = 1
     private const val NOTIFICATION_PENDING_INTENT_CONTENT = 0
-    private const val NOTIFICATION_PENDING_INTENT_STOP_V2RAY = 1
     private const val NOTIFICATION_PENDING_INTENT_RESTART_V2RAY = 2
     private const val NOTIFICATION_ICON_THRESHOLD = 3000
 
@@ -73,10 +73,7 @@ object NotificationManager {
         val startMainIntent = Intent(service, MainActivity::class.java)
         val contentPendingIntent = PendingIntent.getActivity(service, NOTIFICATION_PENDING_INTENT_CONTENT, startMainIntent, flags)
 
-        val stopV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
-        stopV2RayIntent.`package` = AppConfig.ANG_PACKAGE
-        stopV2RayIntent.putExtra("key", AppConfig.MSG_STATE_STOP)
-        val stopV2RayPendingIntent = PendingIntent.getBroadcast(service, NOTIFICATION_PENDING_INTENT_STOP_V2RAY, stopV2RayIntent, flags)
+        val stopV2RayPendingIntent = NotificationStopReceiver.pendingIntent(service)
 
         val restartV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
         restartV2RayIntent.`package` = AppConfig.ANG_PACKAGE
@@ -96,10 +93,13 @@ object NotificationManager {
             .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle(currentConfig?.remarks ?: service.getString(R.string.app_name))
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
+            // Foreground-service lifetime is managed by Android. An OEM may detach its
+            // notification after killing the process; that leftover must be dismissible.
+            .setOngoing(false)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentPendingIntent)
+            .setDeleteIntent(stopV2RayPendingIntent)
             .addAction(
                 R.drawable.ic_delete_24dp,
                 service.getString(R.string.notification_action_stop_v2ray),
@@ -160,14 +160,21 @@ object NotificationManager {
         } else {
             ""
         }
+        val stopPendingIntent = NotificationStopReceiver.pendingIntent(service)
         val notification = NotificationCompat.Builder(service, channelId)
             .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle(service.getString(R.string.app_name))
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
+            .setOngoing(false)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentPendingIntent)
+            .setDeleteIntent(stopPendingIntent)
+            .addAction(
+                R.drawable.ic_delete_24dp,
+                service.getString(R.string.notification_action_stop_v2ray),
+                stopPendingIntent,
+            )
             .build()
         service.startForeground(NOTIFICATION_ID, notification)
     }

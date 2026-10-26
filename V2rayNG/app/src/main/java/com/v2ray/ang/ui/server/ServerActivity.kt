@@ -71,8 +71,8 @@ class ServerActivity : BaseComponentActivity() {
 
     private lateinit var initialConfig: ProfileItem
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         val existingConfig = MmkvManager.decodeServerConfig(editGuid)
         initialConfig = existingConfig ?: ProfileItem.create(createConfigType)
     }

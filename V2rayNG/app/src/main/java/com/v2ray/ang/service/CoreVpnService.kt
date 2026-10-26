@@ -20,6 +20,7 @@ import com.v2ray.ang.core.xray.XrayVpnConfigurator
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SecureStorage
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.root.RootLanSharing
 import com.v2ray.ang.util.LogUtil
@@ -49,8 +50,13 @@ class CoreVpnService : VpnService(), ServiceControl, SingBoxTunHost {
     @Volatile private var platformOwnsTun = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!SecureStorage.ensureAvailable(this)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         NotificationManager.ensureForeground(this)
         if (stopping.get()) return START_NOT_STICKY
+        startService(Intent(this, VpnTaskService::class.java))
         if (serviceReady || !starting.compareAndSet(false, true)) return START_STICKY
         CoreServiceManager.serviceControl = SoftReference(this)
         startupJob = serviceScope.launch {
@@ -151,6 +157,7 @@ class CoreVpnService : VpnService(), ServiceControl, SingBoxTunHost {
 
     override fun stopService() {
         if (!stopping.compareAndSet(false, true)) return
+        stopService(Intent(this, VpnTaskService::class.java))
         serviceReady = false
         startupJob?.cancel()
         RootLanSharing.stopClientSharing(this)
@@ -171,6 +178,7 @@ class CoreVpnService : VpnService(), ServiceControl, SingBoxTunHost {
     }
 
     override fun onDestroy() {
+        RuntimeDiagnostics.core(this, "vpn_service_destroyed stopping=${stopping.get()}")
         stopService()
         serviceScope.cancel()
         super.onDestroy()

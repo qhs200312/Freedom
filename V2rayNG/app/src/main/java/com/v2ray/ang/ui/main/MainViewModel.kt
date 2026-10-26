@@ -248,6 +248,11 @@ class MainViewModel(
                 importBatchConfig(it, allowInsecureHttp = true)
             }
             MainAction.DismissHttpImport -> _uiState.update { it.copy(pendingHttpImport = null) }
+            MainAction.ConfirmExternalImport -> _uiState.value.pendingExternalImport?.let { text ->
+                _uiState.update { it.copy(pendingExternalImport = null) }
+                onAction(MainAction.ImportBatchConfig(text))
+            }
+            MainAction.DismissExternalImport -> _uiState.update { it.copy(pendingExternalImport = null) }
             is MainAction.LocateHandled -> consumeLocateTarget(action.target)
             is MainAction.ShareQRCode -> {
                 val bitmap = dataSource.share2QRCode(action.guid)
@@ -477,6 +482,11 @@ class MainViewModel(
     }
 
     // ---------- Business actions (coroutine-based) ----------
+    fun requestExternalImport(configText: String) {
+        if (configText.isBlank()) return
+        _uiState.update { it.copy(pendingExternalImport = configText) }
+    }
+
     private fun importBatchConfig(configText: String, allowInsecureHttp: Boolean = false) {
         if (!allowInsecureHttp && (requiresHttpSubscriptionConsent(configText) ||
                 requiresHttpSubscriptionConsent(Utils.decode(configText)))) {

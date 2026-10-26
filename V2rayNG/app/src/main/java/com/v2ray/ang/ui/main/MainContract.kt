@@ -24,6 +24,7 @@ data class MainUiState(
     val selectedServerProtocol: String = "",
     val selectedServerDelayMillis: Long? = null,
     val pendingHttpImport: String? = null,
+    val pendingExternalImport: String? = null,
     val traffic: TrafficSnapshot = TrafficSnapshot(),
     val geoLocation: GeoLocation? = null,
     val isLocating: Boolean = false,
@@ -76,6 +77,8 @@ sealed interface MainAction {
     data class ImportBatchConfig(val configText: String) : MainAction
     data object ConfirmHttpImport : MainAction
     data object DismissHttpImport : MainAction
+    data object ConfirmExternalImport : MainAction
+    data object DismissExternalImport : MainAction
 
     data class LocateHandled(val target: LocateTarget) : MainAction
 }

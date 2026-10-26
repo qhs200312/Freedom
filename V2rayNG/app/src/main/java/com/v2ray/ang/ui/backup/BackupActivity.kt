@@ -35,6 +35,7 @@ import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SensitiveCache
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.InputDialog
@@ -45,10 +46,12 @@ import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.UUID
 
 class BackupActivity : HelperBaseComponentActivity() {
     companion object {
@@ -61,8 +64,8 @@ class BackupActivity : HelperBaseComponentActivity() {
         resources.getStringArray(R.array.config_backup_options)
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         observeViewModel()
         if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_EXPORT_ALL, false)) {
             window.decorView.post { backupViaLocal() }
@@ -144,12 +147,15 @@ class BackupActivity : HelperBaseComponentActivity() {
                     output.use {
                         File(cachePath).inputStream().use { input -> input.copyTo(it) }
                     }
-                    File(cachePath).delete()
                 }
                 toastSuccess(R.string.toast_success)
             } catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "Failed to copy backup to Uri", e)
                 toastError(R.string.toast_failure)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    File(cachePath).delete()
+                }
             }
         }
     }
@@ -173,18 +179,37 @@ class BackupActivity : HelperBaseComponentActivity() {
             if (uri == null) {
                 return@launchFileChooser
             }
-            try {
-                val targetFile =
-                    File(cacheDir.absolutePath, "${System.currentTimeMillis()}.zip")
-                contentResolver.openInputStream(uri).use { input ->
-                    targetFile.outputStream().use { fileOut ->
-                        input?.copyTo(fileOut)
+            val work = File(cacheDir, "backup-work").apply { mkdirs() }
+            val targetFile = File(work, "${UUID.randomUUID()}.zip")
+            SensitiveCache.scheduleCleanup(this)
+            lifecycleScope.launch {
+                var handedOff = false
+                try {
+                    withContext(Dispatchers.IO) {
+                        contentResolver.openInputStream(uri).use { nullableInput ->
+                            val input = nullableInput ?: error("Cannot open backup")
+                            targetFile.outputStream().use { fileOut ->
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                var total = 0L
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read <= 0) break
+                                    total += read
+                                    if (total > 256L * 1024 * 1024) error("Backup too large")
+                                    fileOut.write(buffer, 0, read)
+                                }
+                            }
+                        }
                     }
+                    viewModel.restoreConfiguration(cacheDir, targetFile)
+                    handedOff = true
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    LogUtil.e(AppConfig.TAG, "Error during file restore", e)
+                    toastError(R.string.toast_failure)
+                } finally {
+                    if (!handedOff) targetFile.delete()
                 }
-                viewModel.restoreConfiguration(cacheDir, targetFile)
-            } catch (e: Exception) {
-                LogUtil.e(AppConfig.TAG, "Error during file restore", e)
-                toastError(R.string.toast_failure)
             }
         }
     }

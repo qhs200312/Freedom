@@ -10,4 +10,6 @@ data class UrlContentRequest(
     val userAgent: String? = null,
     val requestHeaders: String? = null,
     val callTimeout: Int = 0,
+    val allowInsecureHttp: Boolean = true,
+    val requireHttps: Boolean = false,
 )

@@ -175,6 +175,8 @@
     <string name="title_core_settings">Core Settings</string>
     <string name="title_pref_protocol_default_core">%1$s default core</string>
     <string name="core_preference_auto">Automatic / follow protocol default</string>
+    <string name="core_anytls_fixed">sing-box (fixed; Xray uses a sing-box bridge)</string>
+    <string name="core_nowhere_fixed">Xray + Nowhere (fixed; uses the independent Nowhere core)</string>
     <string name="title_vpn_settings">VPN Settings</string>
     <string name="title_location_privacy_settings">Location &amp; privacy</string>
     <string name="title_pref_per_app_proxy">Per-app proxy</string>

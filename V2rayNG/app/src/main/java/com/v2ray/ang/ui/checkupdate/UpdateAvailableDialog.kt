@@ -60,6 +60,10 @@ fun UpdateAvailableDialog(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+                Text(
+                    text = stringResource(R.string.update_verified_install_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                )
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),

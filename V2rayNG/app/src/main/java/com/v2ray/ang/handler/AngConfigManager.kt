@@ -596,6 +596,7 @@ object AngConfigManager {
                         UrlContentRequest(
                             url = url,
                             userAgent = userAgent,
+                            allowInsecureHttp = it.subscription.allowInsecureUrl,
                             requestHeaders = requestHeaders,
                             timeout = 15000,
                             httpPort = httpPort,
@@ -616,6 +617,7 @@ object AngConfigManager {
                         UrlContentRequest(
                             url = url,
                             userAgent = userAgent,
+                            allowInsecureHttp = it.subscription.allowInsecureUrl,
                             requestHeaders = requestHeaders
                         )
                     )

@@ -25,8 +25,8 @@ abstract class HelperBaseComponentActivity : BaseComponentActivity() {
     private lateinit var permissionRequester: PermissionHelper
     private lateinit var qrCodeScanner: QRCodeScannerHelper
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         fileChooser = FileChooserHelper(this)
         permissionRequester = PermissionHelper(this)
         qrCodeScanner = QRCodeScannerHelper(this)

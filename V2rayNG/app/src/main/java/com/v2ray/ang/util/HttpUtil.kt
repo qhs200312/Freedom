@@ -5,6 +5,7 @@ import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.dto.UrlContentRequest
 import okhttp3.Credentials
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -21,6 +22,8 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 
 object HttpUtil {
+
+    private const val MAX_DOWNLOAD_BYTES = 256L * 1024 * 1024
 
     fun isTcpPortOpen(host: String, port: Int, timeout: Int = 200): Boolean {
         if (port !in 1..65535 || timeout < 1) return false
@@ -125,6 +128,7 @@ object HttpUtil {
      */
     fun getUrlContent(request: UrlContentRequest, onFailure: ((String) -> Unit)? = null): String? {
         val url = request.url ?: return null
+        if (request.requireHttps && url.toHttpUrlOrNull()?.isHttps != true) return null
         val client = buildOkHttpClient(
             request.timeout,
             request.httpPort,
@@ -132,6 +136,7 @@ object HttpUtil {
             request.proxyUsername,
             request.proxyPassword,
             followRedirects = true,
+            requireHttps = request.requireHttps,
         )
         val boundedClient = client.newBuilder()
             .callTimeout(request.callTimeout.toLong(), TimeUnit.MILLISECONDS).build()
@@ -172,9 +177,13 @@ object HttpUtil {
         var currentUrl = request.url
         var redirects = 0
         val maxRedirects = 3
+        val initialUrl = currentUrl?.toHttpUrlOrNull()
 
         while (redirects++ < maxRedirects) {
-            if (currentUrl == null) continue
+            if (currentUrl.isNullOrEmpty()) throw IOException("Empty URL")
+            if (!request.allowInsecureHttp && !Utils.isValidSubUrl(currentUrl)) {
+                throw IOException("HTTP subscription requires consent")
+            }
             val client = buildOkHttpClient(
                 request.timeout,
                 request.httpPort,
@@ -197,9 +206,12 @@ object HttpUtil {
             applyEmbeddedBasicAuthHeader(currentUrl, requestBuilder)
 
 
-            val headersMap = JsonUtil.parseHeadersToMap(request.requestHeaders)
+            val current = currentUrl.toHttpUrlOrNull()
+            val sameOrigin = initialUrl != null && current != null &&
+                initialUrl.scheme == current.scheme && initialUrl.host == current.host && initialUrl.port == current.port
+            val headersMap = if (sameOrigin) JsonUtil.parseHeadersToMap(request.requestHeaders) else emptyMap()
             for ((key, value) in headersMap) {
-                LogUtil.d(AppConfig.TAG, "Adding custom header: $key = $value")
+                LogUtil.d(AppConfig.TAG, "Adding custom header: $key")
                 try {
                     requestBuilder.header(key, value)
                 } catch (_: IllegalArgumentException) {
@@ -257,13 +269,14 @@ object HttpUtil {
         socksPort: Int,
         proxyUsername: String?,
         proxyPassword: String?,
-        followRedirects: Boolean
+        followRedirects: Boolean,
+        requireHttps: Boolean = false,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
             .readTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
             .followRedirects(followRedirects)
-            .followSslRedirects(followRedirects)
+            .followSslRedirects(followRedirects && !requireHttps)
 
         if (socksPort != 0) {
             if (requiresAuthenticatedSocksSocket(proxyUsername, proxyPassword)) {
@@ -341,39 +354,54 @@ object HttpUtil {
         request: UrlContentRequest,
         targetFile: File
     ): Boolean {
-        val url = request.url ?: return false
+        var url = request.url ?: return false
         val client = buildOkHttpClient(
             request.timeout,
             request.httpPort,
             request.socksPort,
             request.proxyUsername,
             request.proxyPassword,
-            followRedirects = true,
+            followRedirects = false,
         )
-        val requestBuilder = Request.Builder()
-            .url(url)
-            .get()
-            .header("Connection", "close")
-        if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
-            requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
-        }
 
         return try {
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) {
-                    LogUtil.w(AppConfig.TAG, "Failed to download file, code=${response.code}, url=$url")
-                    return false
+            repeat(5) {
+                val parsed = url.toHttpUrlOrNull() ?: return false
+                if (request.requireHttps && !parsed.isHttps) return false
+                val requestBuilder = Request.Builder().url(parsed).get().header("Connection", "close")
+                if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+                    requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
                 }
-                val body = response.body ?: return false
-                body.byteStream().use { input ->
-                    targetFile.outputStream().use { output ->
-                        input.copyTo(output)
+                client.newCall(requestBuilder.build()).execute().use { response ->
+                    if (response.isRedirect) {
+                        url = response.header("Location")?.let { parsed.resolve(it)?.toString() } ?: return false
+                        return@repeat
                     }
+                    if (!response.isSuccessful) {
+                        LogUtil.w(AppConfig.TAG, "Failed to download file, code=${response.code}")
+                        return false
+                    }
+                    val body = response.body
+                    if (body.contentLength() > MAX_DOWNLOAD_BYTES) return false
+                    body.byteStream().use { input ->
+                        targetFile.outputStream().use { output ->
+                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                            var total = 0L
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                total += read
+                                if (total > MAX_DOWNLOAD_BYTES) throw IOException("Download too large")
+                                output.write(buffer, 0, read)
+                            }
+                        }
+                    }
+                    return true
                 }
-                true
             }
+            false
         } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "Failed to download file: $url", e)
+            LogUtil.e(AppConfig.TAG, "Failed to download file", e)
             false
         }
     }

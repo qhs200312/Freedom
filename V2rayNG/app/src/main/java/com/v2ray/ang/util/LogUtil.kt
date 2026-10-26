@@ -3,6 +3,7 @@ package com.v2ray.ang.util
 import android.util.Log
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SecureStorage
 import java.util.Locale
 
 object LogUtil {
@@ -27,10 +28,12 @@ object LogUtil {
 
     @Suppress("unused")
     fun refreshLogLevel() {
+        if (SecureStorage.isUnavailable) return
         cachedMinPriority = parsePriority(MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL, DEFAULT_LEVEL))
     }
 
     private fun minPriority(): Int {
+        if (SecureStorage.isUnavailable) return Log.WARN
         val cached = cachedMinPriority
         if (cached != CACHE_UNSET) {
             return cached

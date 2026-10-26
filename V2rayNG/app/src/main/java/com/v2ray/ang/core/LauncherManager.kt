@@ -12,6 +12,7 @@ import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SecureStorage
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.root.RootManager
 import com.v2ray.ang.service.CoreProxyOnlyService
@@ -23,6 +24,7 @@ import com.v2ray.ang.util.Utils
 object LauncherManager {
 
     fun startServiceFromToggle(context: Context): Boolean {
+        if (!SecureStorage.ensureAvailable(context)) return false
         if (MmkvManager.getSelectServer().isNullOrEmpty()) {
             context.toast(R.string.app_tile_first_use)
             return false
@@ -38,6 +40,7 @@ object LauncherManager {
     }
 
     fun startService(context: Context, guid: String? = null): Boolean {
+        if (!SecureStorage.ensureAvailable(context)) return false
         LogUtil.i(AppConfig.TAG, "LauncherManager: startService from ${context::class.java.simpleName}")
 
         if (guid != null) {
@@ -113,6 +116,9 @@ object LauncherManager {
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING)) {
             context.toast(R.string.toast_warning_pref_proxysharing_short)
+            if (SettingsManager.getSocksUsername() == null || SettingsManager.getSocksPassword() == null) {
+                context.toast(R.string.toast_proxysharing_requires_auth)
+            }
         } else {
             context.toast(R.string.toast_services_start)
         }

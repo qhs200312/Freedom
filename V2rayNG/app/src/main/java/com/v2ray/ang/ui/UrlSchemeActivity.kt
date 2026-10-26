@@ -4,24 +4,17 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
-import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.main.MainActivity
 import com.v2ray.ang.util.LogUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.URLDecoder
 
 class UrlSchemeActivity : BaseComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         try {
             intent.apply {
                 if (action == Intent.ACTION_SEND) {
@@ -34,13 +27,13 @@ class UrlSchemeActivity : BaseComponentActivity() {
                     when (data?.host) {
                         "install-config" -> {
                             val uri: Uri? = intent.data
-                            val shareUrl = uri?.getQueryParameter("url").orEmpty()
+                            val shareUrl = uri?.getQueryParameters("url")?.firstOrNull().orEmpty()
                             parseUri(shareUrl, uri?.fragment)
                         }
 
                         "install-sub" -> {
                             val uri: Uri? = intent.data
-                            val shareUrl = uri?.getQueryParameter("url").orEmpty()
+                            val shareUrl = uri?.getQueryParameters("url")?.firstOrNull().orEmpty()
                             parseUri(shareUrl, uri?.fragment)
                         }
 
@@ -51,10 +44,10 @@ class UrlSchemeActivity : BaseComponentActivity() {
                 }
             }
 
-            startActivity(Intent(this, MainActivity::class.java))
             finish()
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Error processing URL scheme", e)
+            finish()
         }
     }
 
@@ -66,25 +59,15 @@ class UrlSchemeActivity : BaseComponentActivity() {
         if (uriString.isNullOrEmpty()) {
             return
         }
-        LogUtil.i(AppConfig.TAG, uriString)
-
-        var decodedUrl = URLDecoder.decode(uriString, "UTF-8")
+        // Query values are already decoded; preserve escapes inside complete proxy URLs.
+        val decodedUrl = if (uriString.contains("://")) uriString else Uri.decode(uriString)
         val uri = Uri.parse(decodedUrl)
-        if (uri != null) {
-            if (uri.fragment.isNullOrEmpty() && !fragment.isNullOrEmpty()) {
-                decodedUrl += "#${fragment}"
-            }
-            LogUtil.i(AppConfig.TAG, decodedUrl)
-            lifecycleScope.launch(Dispatchers.IO) {
-                val (count, countSub) = AngConfigManager.importBatchConfig(decodedUrl, "", false)
-                withContext(Dispatchers.Main) {
-                    if (count + countSub > 0) {
-                        toast(R.string.import_subscription_success)
-                    } else {
-                        toast(R.string.import_subscription_failure)
-                    }
-                }
-            }
-        }
+        val finalUrl = if (uri.fragment.isNullOrEmpty() && !fragment.isNullOrEmpty()) {
+            "$decodedUrl#$fragment"
+        } else decodedUrl
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_IMPORT_TEXT, finalUrl)
+        )
     }
 }

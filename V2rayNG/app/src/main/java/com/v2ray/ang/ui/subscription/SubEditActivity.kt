@@ -51,8 +51,8 @@ class SubEditActivity : BaseComponentActivity() {
     private lateinit var suggestions: List<String>
     private lateinit var subItem: SubscriptionItem
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
 
         suggestions = SettingsManager.getProfileRemarks(
             excludeConfigTypes = setOf(

@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.TaskerAuthorization
+import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.SettingsSwitchItem
@@ -46,8 +48,8 @@ class TaskerActivity : BaseComponentActivity() {
     private val switchState = mutableStateOf(false)
     private val selectedPosition = mutableStateOf(-1)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
 
         lstData.add("Default")
         lstGuid.add(AppConfig.TASKER_DEFAULT_GUID)
@@ -100,6 +102,15 @@ class TaskerActivity : BaseComponentActivity() {
         }
 
         val extraBundle = Bundle()
+        try {
+            val existing = intent?.getBundleExtra(AppConfig.TASKER_EXTRA_BUNDLE)
+                ?.getString(TaskerAuthorization.EXTRA_TOKEN)
+            extraBundle.putString(TaskerAuthorization.EXTRA_TOKEN, TaskerAuthorization.issue(this, existing))
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Cannot authorize Tasker configuration", e)
+            toastError(R.string.toast_failure)
+            return
+        }
         extraBundle.putBoolean(AppConfig.TASKER_EXTRA_BUNDLE_SWITCH, switchState.value)
         extraBundle.putString(AppConfig.TASKER_EXTRA_BUNDLE_GUID, lstGuid[position])
         val intent = Intent()
@@ -146,6 +157,11 @@ fun TaskerScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            Text(
+                text = stringResource(R.string.tasker_authorization_notice),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
             SettingsSwitchItem(
                 title = stringResource(R.string.tasker_start_service),
                 checked = switchState.value,

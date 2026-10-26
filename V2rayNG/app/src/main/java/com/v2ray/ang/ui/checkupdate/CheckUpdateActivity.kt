@@ -12,6 +12,7 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -20,19 +21,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreNativeManager
+import com.v2ray.ang.handler.VerifiedUpdateManager
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.SettingsMenuItem
 import com.v2ray.ang.ui.compose.SettingsSwitchItem
 import com.v2ray.ang.ui.compose.VersionInfoBlock
-import com.v2ray.ang.util.Utils
+import kotlinx.coroutines.launch
 
 class CheckUpdateActivity : BaseComponentActivity() {
 
     private val viewModel: CheckUpdateViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
     }
 
     @Composable
@@ -47,6 +49,7 @@ fun CheckUpdateScreen(
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val checkPreRelease by viewModel.checkPreRelease.collectAsStateWithLifecycle()
@@ -97,7 +100,7 @@ fun CheckUpdateScreen(
             onDismiss = viewModel::dismissUpdateDialog,
             onUpdate = {
                 viewModel.dismissUpdateDialog()
-                result.downloadUrl?.let { Utils.openUri(context, it) }
+                scope.launch { VerifiedUpdateManager.downloadAndInstall(context, result) }
             },
         )
     }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.text.TextUtils
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.LauncherManager
+import com.v2ray.ang.handler.TaskerAuthorization
 import com.v2ray.ang.util.LogUtil
 
 class TaskerReceiver : BroadcastReceiver() {
@@ -20,13 +21,16 @@ class TaskerReceiver : BroadcastReceiver() {
      */
     override fun onReceive(context: Context, intent: Intent?) {
         try {
-            val bundle = intent?.getBundleExtra(AppConfig.TASKER_EXTRA_BUNDLE)
-            val switch = bundle?.getBoolean(AppConfig.TASKER_EXTRA_BUNDLE_SWITCH, false)
-            val guid = bundle?.getString(AppConfig.TASKER_EXTRA_BUNDLE_GUID).orEmpty()
+            if (intent?.action != "com.twofortyfouram.locale.intent.action.FIRE_SETTING") return
+            val bundle = intent.getBundleExtra(AppConfig.TASKER_EXTRA_BUNDLE) ?: return
+            if (!TaskerAuthorization.isAuthorized(context, bundle.getString(TaskerAuthorization.EXTRA_TOKEN))) return
+            val guid = bundle.getString(AppConfig.TASKER_EXTRA_BUNDLE_GUID).orEmpty()
 
-            if (switch == null || TextUtils.isEmpty(guid)) {
-                return
-            } else if (switch) {
+            if (!bundle.containsKey(AppConfig.TASKER_EXTRA_BUNDLE_SWITCH) ||
+                TextUtils.isEmpty(guid)
+            ) return
+            val switch = bundle.getBoolean(AppConfig.TASKER_EXTRA_BUNDLE_SWITCH, false)
+            if (switch) {
                 if (guid == AppConfig.TASKER_DEFAULT_GUID) {
                     LauncherManager.startServiceFromToggle(context)
                 } else {

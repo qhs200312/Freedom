@@ -76,8 +76,8 @@ class RoutingSettingActivity : HelperBaseComponentActivity() {
     private val viewModel: RoutingSettingsViewModel by viewModels()
     private val domainStrategyState = MutableStateFlow("")
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         domainStrategyState.value = getDomainStrategy()
     }
 
@@ -106,6 +106,7 @@ class RoutingSettingActivity : HelperBaseComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (storageUnavailable) return
         viewModel.reload()
     }
 

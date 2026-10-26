@@ -42,8 +42,8 @@ class UserAssetUrlActivity : BaseComponentActivity() {
     private lateinit var initialRemarks: String
     private lateinit var initialUrl: String
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
 
         val assetItem = MmkvManager.decodeAsset(editAssetId)
         val assetUrlQrcode = intent.getStringExtra(ASSET_URL_QRCODE)

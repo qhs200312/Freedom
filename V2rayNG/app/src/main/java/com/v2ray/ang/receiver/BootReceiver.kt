@@ -7,6 +7,7 @@ import android.os.UserManager
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SecureStorage
 import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.util.LogUtil
 
@@ -22,6 +23,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         val action = intent?.action ?: return
         if (context == null) return
+        if (!SecureStorage.ensureAvailable(context)) return
 
         LogUtil.i(AppConfig.TAG, "BootReceiver received: $action")
 

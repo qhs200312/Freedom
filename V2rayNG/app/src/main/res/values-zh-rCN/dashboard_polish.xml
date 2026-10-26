@@ -5,4 +5,23 @@
     <string name="subscription_http_import_title">导入 HTTP 订阅</string>
     <string name="subscription_http_import_message">此内容包含未加密的 HTTP 订阅。是否允许本次导入的 HTTP 地址，并继续导入节点？</string>
     <string name="subscription_http_import_confirm">继续导入</string>
+    <string name="external_import_title">外部应用请求导入</string>
+    <string name="external_import_message">另一个应用正在尝试向 v2rayNG 导入代理配置。请仅在你本人发起了该操作时才继续。</string>
+    <string name="external_import_confirm">导入</string>
+    <string name="toast_proxysharing_requires_auth">局域网共享需要先设置 SOCKS 用户名和密码</string>
+    <string name="update_download_source_warning">请确认下载来源为官方仓库，安装前核对签名</string>
+    <string name="tasker_authorization_notice">为保证安全，更新后请将已有自动化任务打开并重新保存一次。保存的任务会获得私有授权凭据；这些凭据不会随备份迁移。</string>
+    <string name="update_verifying_download">正在下载并验证更新…</string>
+    <string name="update_verification_failed">更新被拒绝或无法获取。安装包必须与本应用包名、签名证书一致，且版本更新；请检查网络和安装权限。</string>
+    <string name="update_verified_install_notice">安装包将通过 HTTPS 下载，并与当前应用签名证书核对后才交给系统安装器，仍需你确认安装。分享文件在 15 分钟后失效。</string>
+    <string name="storage_recovery_title">配置存储暂时无法使用</string>
+    <string name="storage_recovery_message">无法打开配置，原始文件已保留，代理启动已暂停。你可以在补回缺失文件后重试，导出原始文件用于抢救，或归档旧配置并重新开始。</string>
+    <string name="storage_recovery_retry">重试打开配置</string>
+    <string name="storage_recovery_retry_failed">配置仍然无法打开。如果刚才开始过重置，请先关闭并重新打开应用，再继续操作。</string>
+    <string name="storage_recovery_export">导出原始文件</string>
+    <string name="storage_recovery_export_warning">导出的文件可能包含明文节点凭据和加密配置，请保存到可信的私密位置。这是抢救用的原始归档，不是普通备份；如果 Android Keystore 密钥已丢失，无法仅凭此归档重建密钥。</string>
+    <string name="storage_recovery_exported">原始文件已导出，请妥善保管归档。</string>
+    <string name="storage_recovery_reset">归档旧配置并重置</string>
+    <string name="storage_recovery_reset_warning">当前文件将移入应用私有的抢救归档，新配置将使用新密钥。旧文件及密钥引用都会保留。完成后应用将关闭，请从桌面重新打开并开始配置。</string>
+    <string name="storage_recovery_operation_failed">操作未能完成，原始文件没有被删除。若刚才执行过重置，请先关闭并重新打开应用再重试。</string>
 </resources>

@@ -60,8 +60,8 @@ class AppPickerActivity : BaseComponentActivity() {
 
     private val viewModel: AppPickerViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         val initial = intent.getStringArrayListExtra(EXTRA_SELECTED_PACKAGES).orEmpty()
         viewModel.initialize(initial)
         viewModel.loadApps(this)

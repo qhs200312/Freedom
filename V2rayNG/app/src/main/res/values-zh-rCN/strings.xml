@@ -168,6 +168,8 @@
     <string name="title_core_settings">核心设置</string>
     <string name="title_pref_protocol_default_core">%1$s 默认内核</string>
     <string name="core_preference_auto">自动识别 / 跟随协议默认</string>
+    <string name="core_anytls_fixed">sing-box（固定；Xray 通过 sing-box 桥接）</string>
+    <string name="core_nowhere_fixed">Xray + Nowhere（固定；使用独立 Nowhere 内核）</string>
     <string name="title_vpn_settings">VPN 设置</string>
     <string name="title_location_privacy_settings">定位与隐私</string>
     <string name="title_pref_per_app_proxy">分应用</string>

@@ -536,6 +536,7 @@ object SettingsManager {
      * @return The locale.
      */
     fun getLocale(): Locale {
+        if (SecureStorage.isUnavailable) return Utils.getSysLocale()
         val langCode =
             MmkvManager.decodeSettingsString(AppConfig.PREF_LANGUAGE) ?: Language.AUTO.code
         val language = Language.fromCode(langCode)

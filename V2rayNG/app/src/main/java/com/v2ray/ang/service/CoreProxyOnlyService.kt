@@ -9,6 +9,7 @@ import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SecureStorage
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MyContextWrapper
 import java.lang.ref.SoftReference
@@ -29,6 +30,10 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      */
     override fun onCreate() {
         super.onCreate()
+        if (!SecureStorage.ensureAvailable(this)) {
+            stopSelf()
+            return
+        }
         LogUtil.i(AppConfig.TAG, "StartCore-Proxy: Service created")
         CoreServiceManager.serviceControl = SoftReference(this)
     }
@@ -41,6 +46,10 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      * @return The start mode.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!SecureStorage.ensureAvailable(this)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         NotificationManager.ensureForeground(this)
         LogUtil.i(AppConfig.TAG, "StartCore-Proxy: Service command received")
 

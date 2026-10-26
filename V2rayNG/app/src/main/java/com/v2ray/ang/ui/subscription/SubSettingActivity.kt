@@ -61,8 +61,8 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 class SubSettingActivity : BaseComponentActivity() {
     private val viewModel: SubscriptionsViewModel by viewModels()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
     }
 
     @Composable
@@ -89,6 +89,7 @@ class SubSettingActivity : BaseComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (storageUnavailable) return
         viewModel.reload()
     }
 

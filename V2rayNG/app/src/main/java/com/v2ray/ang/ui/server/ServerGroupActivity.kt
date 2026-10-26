@@ -61,8 +61,8 @@ class ServerGroupActivity : BaseComponentActivity() {
     private var initialTestOutbounds: Boolean = false
     private lateinit var initialFallbackTag: String
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
 
         val config = MmkvManager.decodeServerConfig(editGuid)
         populateSubscriptionSpinner()

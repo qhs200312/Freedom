@@ -12,6 +12,7 @@ import com.v2ray.ang.enums.NotificationChannelType
 import com.v2ray.ang.extension.serializable
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SecureStorage
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.helper.NotificationHelper
 import com.v2ray.ang.util.LogUtil
@@ -27,6 +28,10 @@ class CoreTestService : Service() {
      */
     override fun onCreate() {
         super.onCreate()
+        if (!SecureStorage.ensureAvailable(this)) {
+            stopSelf()
+            return
+        }
         CoreNativeManager.initCoreEnv(this)
     }
 
@@ -60,6 +65,10 @@ class CoreTestService : Service() {
      * @return The start mode.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!SecureStorage.ensureAvailable(this)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         NotificationHelper.startForeground(
             this,
             NotificationChannelType.CORE_TEST,

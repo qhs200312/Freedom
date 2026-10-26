@@ -61,6 +61,10 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : HelperBaseComponentActivity() {
 
+    companion object {
+        const val EXTRA_IMPORT_TEXT = "import_text"
+    }
+
     private var coreProcessBound = false
     private val coreProcessConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) = Unit
@@ -104,9 +108,10 @@ class MainActivity : HelperBaseComponentActivity() {
             if (restartService && mainViewModel.uiState.value.isRunning) restartV2Ray()
         }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
+        handleExternalImport(intent)
         mainViewModel.checkForUpdatesOnLaunch()
 
         coreProcessBound = bindService(
@@ -116,6 +121,19 @@ class MainActivity : HelperBaseComponentActivity() {
         )
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (storageUnavailable) return
+        setIntent(intent)
+        handleExternalImport(intent)
+    }
+
+    private fun handleExternalImport(intent: Intent?) {
+        val text = intent?.getStringExtra(EXTRA_IMPORT_TEXT)?.takeIf { it.isNotBlank() } ?: return
+        intent.removeExtra(EXTRA_IMPORT_TEXT)
+        mainViewModel.requestExternalImport(text)
     }
 
     override fun onDestroy() {
@@ -128,11 +146,12 @@ class MainActivity : HelperBaseComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (storageUnavailable) return
         mainViewModel.setDashboardVisible(true)
     }
 
     override fun onPause() {
-        mainViewModel.setDashboardVisible(false)
+        if (!storageUnavailable) mainViewModel.setDashboardVisible(false)
         super.onPause()
     }
 

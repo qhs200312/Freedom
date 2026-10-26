@@ -5,4 +5,23 @@
     <string name="subscription_http_import_title">Import HTTP subscription</string>
     <string name="subscription_http_import_message">HTTP subscription links are unencrypted. Allow HTTP for the subscriptions in this import and continue importing nodes?</string>
     <string name="subscription_http_import_confirm">Continue importing</string>
+    <string name="external_import_title">Import from external app</string>
+    <string name="external_import_message">Another app is trying to import proxy configurations into v2rayNG. Only continue if you started this action yourself.</string>
+    <string name="external_import_confirm">Import</string>
+    <string name="toast_proxysharing_requires_auth">LAN sharing requires a SOCKS username and password.</string>
+    <string name="update_download_source_warning">Confirm that the download comes from the official repository and verify the signature before installing.</string>
+    <string name="tasker_authorization_notice">For security, open and save existing automation tasks once after this update. Saved tasks receive a private authorization token. Tokens are not included in backups.</string>
+    <string name="update_verifying_download">Downloading and verifying the update...</string>
+    <string name="update_verification_failed">Update rejected or unavailable. The APK must match the installed package and signing certificate and have a newer version. Check network access and installation permissions.</string>
+    <string name="update_verified_install_notice">The APK will be downloaded over HTTPS and checked against the installed signing certificate before opening the system installer. You must confirm installation. Shared files expire after 15 minutes.</string>
+    <string name="storage_recovery_title">Configuration storage unavailable</string>
+    <string name="storage_recovery_message">Your configuration could not be opened. The original files have been preserved, and proxy startup is paused. Retry after restoring the missing files, export the raw files for recovery, or archive them and start again.</string>
+    <string name="storage_recovery_retry">Retry opening configuration</string>
+    <string name="storage_recovery_retry_failed">The configuration is still unavailable. If a reset was started, close and reopen the app before continuing it.</string>
+    <string name="storage_recovery_export">Export original files</string>
+    <string name="storage_recovery_export_warning">This archive may contain plaintext proxy credentials and encrypted configuration files. Save it somewhere private. It is a recovery archive, not a normal backup; missing Android Keystore keys cannot be recreated from it.</string>
+    <string name="storage_recovery_exported">Original files exported. Keep the recovery archive private.</string>
+    <string name="storage_recovery_reset">Archive configuration and reset</string>
+    <string name="storage_recovery_reset_warning">The current files will be moved into a private recovery archive. New configuration will use a new key. The old files and key references will be preserved. The app will close; reopen it from the launcher to start again.</string>
+    <string name="storage_recovery_operation_failed">The operation could not be completed. Original files have not been deleted. Close and reopen the app before retrying a reset.</string>
 </resources>

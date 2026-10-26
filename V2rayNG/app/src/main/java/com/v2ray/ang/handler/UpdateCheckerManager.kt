@@ -30,6 +30,7 @@ object UpdateCheckerManager {
             HttpUtil.getUrlContent(
                 UrlContentRequest(
                     url = url,
+                    requireHttps = true,
                     timeout = 5000,
                     httpPort = httpPort,
                     proxyUsername = proxyUsername,
@@ -43,6 +44,7 @@ object UpdateCheckerManager {
             response = HttpUtil.getUrlContent(
                 UrlContentRequest(
                     url = url,
+                    requireHttps = true,
                     timeout = 5000
                 )
             )
@@ -73,6 +75,7 @@ object UpdateCheckerManager {
                 latestVersion = latestVersion,
                 releaseNotes = latestRelease.body,
                 downloadUrl = downloadUrl,
+                downloadDigest = latestRelease.assets.firstOrNull { it.browserDownloadUrl == downloadUrl }?.digest,
                 isPreRelease = latestRelease.prerelease
             )
         } else {
@@ -81,31 +84,36 @@ object UpdateCheckerManager {
     }
 
     private fun compareVersions(version1: String, version2: String): Int {
-        val v1 = version1.split(".")
-        val v2 = version2.split(".")
+        fun parse(v: String): List<Int> = v.trim()
+            .removePrefix("v")
+            .substringBefore('-')
+            .substringBefore('+')
+            .split('.')
+            .map { it.toIntOrNull() ?: 0 }
+
+        val v1 = parse(version1)
+        val v2 = parse(version2)
 
         for (i in 0 until maxOf(v1.size, v2.size)) {
-            val num1 = if (i < v1.size) v1[i].toInt() else 0
-            val num2 = if (i < v2.size) v2[i].toInt() else 0
-            if (num1 != num2) return num1 - num2
+            val num1 = v1.getOrElse(i) { 0 }
+            val num2 = v2.getOrElse(i) { 0 }
+            if (num1 != num2) return num1.compareTo(num2)
         }
         return 0
     }
 
     private fun getDownloadUrl(release: GitHubRelease, abi: String): String {
         val fDroid = "fdroid"
-
-        val assetsByAbi = release.assets.filter {
-            (it.name.contains(abi, true))
+        val isFdroid = BuildConfig.APPLICATION_ID.contains(fDroid, ignoreCase = true)
+        val apks = release.assets.filter {
+            it.name.endsWith(".apk", ignoreCase = true) &&
+                it.name.contains(fDroid, ignoreCase = true) == isFdroid
         }
-
-        val asset = if (BuildConfig.APPLICATION_ID.contains(fDroid, ignoreCase = true)) {
-            assetsByAbi.firstOrNull { it.name.contains(fDroid) }
-        } else {
-            assetsByAbi.firstOrNull { !it.name.contains(fDroid) }
-        }
-
-        return asset?.browserDownloadUrl
+        val abiPattern = Regex("(^|[-_.])(arm64-v8a|armeabi-v7a|x86_64|x86|universal)(?=[-_.]|$)", RegexOption.IGNORE_CASE)
+        fun assetAbi(asset: GitHubRelease.Asset): String? = abiPattern.find(asset.name)?.groupValues?.get(2)
+        val asset = apks.firstOrNull { assetAbi(it).equals(abi, ignoreCase = true) }
+            ?: apks.firstOrNull { assetAbi(it).equals("universal", ignoreCase = true) }
             ?: throw IllegalStateException("No compatible APK found")
+        return asset.browserDownloadUrl
     }
 }

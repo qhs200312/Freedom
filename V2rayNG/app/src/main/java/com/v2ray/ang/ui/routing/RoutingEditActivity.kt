@@ -83,8 +83,8 @@ class RoutingEditActivity : BaseComponentActivity() {
     private lateinit var nodeOptions: List<RoutingNodeOption>
     private var canUseProcess: Boolean = false
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         initial = SettingsManager.getRoutingRuleset(position)
         nodeOptions = loadRoutingNodeOptions(this)
         canUseProcess = SettingsManager.canUseProcessRouting()

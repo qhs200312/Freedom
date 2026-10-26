@@ -510,12 +510,12 @@ object CoreConfigManager {
             inbound1.settings = V2rayConfig.InboundBean.InSettingsBean()
         }
 
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING) != true) {
-            inbound1.listen = AppConfig.LOOPBACK
-        }
+        val sharingEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING) == true
+        val hasAuth = socksUsername != null && socksPassword != null
+        inbound1.listen = if (sharingEnabled && hasAuth) "0.0.0.0" else AppConfig.LOOPBACK
         inbound1.port = socksPort
         inbound1.settings?.udp = MmkvManager.decodeSettingsBool(AppConfig.PREF_SOCKS_ENABLE_UDP, true)
-        if (socksUsername != null && socksPassword != null) {
+        if (hasAuth) {
             inbound1.settings?.auth = "password"
             inbound1.settings?.accounts = listOf(
                 V2rayConfig.InboundBean.InSettingsBean.SocksAccountBean(

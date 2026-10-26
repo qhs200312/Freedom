@@ -168,6 +168,7 @@ object SubscriptionUpdater {
 
         @SuppressLint("MissingPermission")
         override suspend fun doWork(): Result {
+            if (!SecureStorage.ensureAvailable(applicationContext)) return Result.retry()
             val subId = inputData.getString(KEY_SUB_ID)
             LogUtil.i(AppConfig.TAG, "SubscriptionUpdater update starting via Service: $subId")
 

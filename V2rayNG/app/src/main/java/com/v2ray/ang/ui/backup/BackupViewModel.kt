@@ -2,12 +2,13 @@ package com.v2ray.ang.ui.backup
 
 import android.app.Application
 import android.net.Uri
-import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
+import com.v2ray.ang.handler.SecureStorage
+import com.v2ray.ang.handler.SensitiveCache
 import com.v2ray.ang.handler.WebDavManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.ui.base.ViewModelEvent
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.UUID
 
 class BackupViewModel(application: Application) : BaseViewModel(application) {
 
@@ -43,7 +45,21 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
         launchLoading {
             val ret = backupConfigurationToCache(cacheDir, appName)
             if (ret.first) {
-                _viewModelEvent.send(BackupViewModelEvent.ShareFile(ret.second))
+                val directory = File(cacheDir, "shared-backups").apply { mkdirs() }
+                val shared = File(directory, "${UUID.randomUUID()}.zip")
+                val original = File(ret.second)
+                try {
+                    check(original.renameTo(shared))
+                    SensitiveCache.scheduleCleanup(app)
+                    _viewModelEvent.send(BackupViewModelEvent.ShareFile(shared.path))
+                } catch (e: Exception) {
+                    shared.delete()
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    LogUtil.e(AppConfig.TAG, "Cannot share backup", e)
+                    toastError(R.string.toast_failure)
+                } finally {
+                    original.delete()
+                }
             } else {
                 toastError(R.string.toast_failure)
             }
@@ -63,7 +79,12 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
 
     fun restoreConfiguration(cacheDir: File, zipFile: File) {
         launchLoading {
-            val success = performRestore(cacheDir, zipFile)
+            SensitiveCache.scheduleCleanup(app)
+            val success = try {
+                withContext(Dispatchers.IO) { performRestore(cacheDir, zipFile) }
+            } finally {
+                zipFile.delete()
+            }
             if (success) {
                 toastSuccess(R.string.toast_success)
                 _viewModelEvent.send(BackupViewModelEvent.RestoreSuccess)
@@ -123,7 +144,9 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
         launchLoading {
             var target: File? = null
             try {
-                target = File(cacheDir, "download_${System.currentTimeMillis()}.zip")
+                SensitiveCache.scheduleCleanup(app)
+                val work = File(cacheDir, "backup-work").apply { mkdirs() }
+                target = File(work, "download_${UUID.randomUUID()}.zip")
                 WebDavManager.init(config)
                 val ok = WebDavManager.downloadFile(AppConfig.WEBDAV_BACKUP_FILE_NAME, target)
                 if (!ok) {
@@ -151,33 +174,52 @@ class BackupViewModel(application: Application) : BaseViewModel(application) {
             "yyyy-MM-dd-HH-mm-ss",
             Locale.getDefault()
         ).format(System.currentTimeMillis())
-        val folderName = "${appName}_$dateFormatted"
-        val backupDir = cacheDir.absolutePath + "/$folderName"
-        val outputZipFilePath = "${cacheDir.absolutePath}/$folderName.zip"
+        val folderName = "${appName}_${dateFormatted}_${UUID.randomUUID()}"
+        val work = File(cacheDir, "backup-work").apply { mkdirs() }
+        val backupDir = File(work, folderName).path
+        val outputZipFilePath = File(work, "$folderName.zip").path
 
-        val count = MMKV.backupAllToDirectory(backupDir)
-        if (count <= 0) {
-            return@withContext Pair(false, "")
-        }
+        try {
+            SensitiveCache.scheduleCleanup(app)
+            if (!SecureStorage.backupToDirectory(File(backupDir))) {
+                return@withContext Pair(false, "")
+            }
 
-        if (ZipUtil.zipFromFolder(backupDir, outputZipFilePath)) {
-            Pair(true, outputZipFilePath)
-        } else {
+            if (ZipUtil.zipFromFolder(backupDir, outputZipFilePath)) {
+                Pair(true, outputZipFilePath)
+            } else {
+                File(outputZipFilePath).delete()
+                Pair(false, "")
+            }
+        } catch (e: Exception) {
+            File(outputZipFilePath).delete()
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            LogUtil.e(AppConfig.TAG, "Cannot create backup", e)
             Pair(false, "")
+        } finally {
+            File(backupDir).deleteRecursively()
         }
     }
 
     private fun performRestore(cacheDir: File, zipFile: File): Boolean {
-        val backupDir = cacheDir.absolutePath + "/${System.currentTimeMillis()}"
+        val work = File(cacheDir, "backup-work").apply { mkdirs() }
+        val backupDir = File(work, UUID.randomUUID().toString()).path
 
-        if (!ZipUtil.unzipToFolder(zipFile, backupDir)) {
+        try {
+            if (!ZipUtil.unzipToFolder(zipFile, backupDir)) {
+                return false
+            }
+
+            if (!SecureStorage.restoreFromDirectory(File(backupDir))) return false
+            SettingsChangeManager.makeSetupGroupTab()
+            SettingsChangeManager.makeRestartService()
+
+            return true
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Cannot restore backup", e)
             return false
+        } finally {
+            File(backupDir).deleteRecursively()
         }
-
-        val count = MMKV.restoreAllFromDirectory(backupDir)
-        SettingsChangeManager.makeSetupGroupTab()
-        SettingsChangeManager.makeRestartService()
-
-        return count > 0
     }
 }

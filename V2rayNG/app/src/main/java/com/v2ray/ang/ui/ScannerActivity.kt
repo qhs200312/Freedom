@@ -77,8 +77,8 @@ class ScannerActivity : HelperBaseComponentActivity() {
 
     private val uiState = mutableStateOf(ScannerUiState.IDLE)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         startScan()
     }
 

@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.LocaleList
 import android.provider.Settings
 import android.util.Base64
@@ -13,7 +12,6 @@ import android.webkit.URLUtil
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
 import java.io.IOException
 import java.net.InetAddress
@@ -428,14 +426,12 @@ object Utils {
         try {
             if (URLUtil.isHttpsUrl(value)) return true
             if (URLUtil.isHttpUrl(value)) {
-                if (value.contains(LOOPBACK)) return true
-
-                //Check private ip address
                 val uri = URI(fixIllegalUrl(value))
-                if (isIpAddress(uri.host)) {
-                    AppConfig.PRIVATE_IP_LIST.forEach {
-                        if (isIpInCidr(uri.host, it)) return true
-                    }
+                val host = uri.host?.lowercase(Locale.ROOT)?.removeSurrounding("[", "]").orEmpty()
+                if (host.isEmpty()) return false
+                if (host == "127.0.0.1" || host == "localhost" || host == "::1") return true
+                if (isIpAddress(host) && AppConfig.PRIVATE_IP_LIST.any { isIpInCidr(host, it) }) {
+                    return true
                 }
             }
         } catch (e: Exception) {
@@ -445,15 +441,11 @@ object Utils {
     }
 
     /**
-     * Get the receiver flags based on the Android version.
+     * Get the flags for app-internal receivers.
      *
      * @return The receiver flags.
      */
-    fun receiverFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ContextCompat.RECEIVER_EXPORTED
-    } else {
-        ContextCompat.RECEIVER_NOT_EXPORTED
-    }
+    fun receiverFlags(): Int = ContextCompat.RECEIVER_NOT_EXPORTED
 
     /**
      * Check if the package is Xray.

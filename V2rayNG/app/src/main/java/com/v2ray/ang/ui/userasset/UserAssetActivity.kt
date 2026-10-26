@@ -77,8 +77,8 @@ class UserAssetActivity : HelperBaseComponentActivity() {
     private val geoFilesSourceState = MutableStateFlow("")
     private val refreshTrigger = MutableStateFlow(0)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
         geoFilesSourceState.value = getGeoFilesSources()
     }
 
@@ -117,6 +117,7 @@ class UserAssetActivity : HelperBaseComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (storageUnavailable) return
         refreshData()
     }
 

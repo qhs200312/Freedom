@@ -9,8 +9,8 @@ import com.v2ray.ang.ui.base.BaseComponentActivity
 
 class ScSwitchActivity : BaseComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onStorageReady(savedInstanceState: Bundle?) {
+        super.onStorageReady(savedInstanceState)
     }
 
     @Composable

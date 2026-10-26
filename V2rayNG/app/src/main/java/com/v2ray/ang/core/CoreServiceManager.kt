@@ -38,6 +38,8 @@ import java.lang.ref.SoftReference
 object CoreServiceManager {
     private val session = CoreSession()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val recoveryStopLock = Any()
+    private val recoveryStopWaiters = mutableListOf<() -> Unit>()
 
     @Volatile var serviceControl: SoftReference<ServiceControl>? = null
 
@@ -46,6 +48,15 @@ object CoreServiceManager {
         (session.runtime as? ServiceRuntime)?.control?.isStopRequested() != true
     fun isServiceReady(): Boolean = session.isReady && isRunning()
     fun getRunningServerName(): String = (session.runtime as? ServiceRuntime)?.plan?.profile?.remarks.orEmpty()
+
+    fun stopForStorageRecovery(onStopped: () -> Unit) {
+        val control = synchronized(recoveryStopLock) {
+            (serviceControl?.get() ?: (session.runtime as? ServiceRuntime)?.control)?.also {
+                recoveryStopWaiters.add(onStopped)
+            }
+        }
+        if (control == null) onStopped() else control.stopService()
+    }
 
     fun markDataPathReady(service: Service): Boolean {
         val ticket = session.token
@@ -115,6 +126,12 @@ object CoreServiceManager {
                     }
                     if (serviceControl?.get()?.getService() === service) serviceControl = null
                 }
+                val completed = synchronized(recoveryStopLock) {
+                    if (serviceControl?.get() == null && session.runtime == null) {
+                        recoveryStopWaiters.toList().also { recoveryStopWaiters.clear() }
+                    } else emptyList()
+                }
+                completed.forEach { runCatching(it) }
             }
         }
         return service != null

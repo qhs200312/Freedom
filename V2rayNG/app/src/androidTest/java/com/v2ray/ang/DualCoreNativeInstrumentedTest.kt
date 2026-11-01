@@ -156,8 +156,8 @@ class DualCoreNativeInstrumentedTest {
 
     @Test
     fun bundledCoresExposeExpectedVersionsAndAcceptHy2Config() {
-        assertTrue(Libv2ray.checkVersionX().contains("Xray-core v26.10.17"))
-        assertEquals("1.14.3", Corebundle.singBoxVersion())
+        assertTrue(Libv2ray.checkVersionX().contains("Xray-core v26.10.31"))
+        assertEquals("1.14.4", Corebundle.singBoxVersion())
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         SettingsManager.initAssets(context, context.assets)

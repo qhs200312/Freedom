@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_notification_channel">App updates</string>
+    <string name="update_downloading_version">Downloading update %1$s</string>
+    <string name="update_downloaded_version">Update %1$s downloaded</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_download_bytes">%1$s downloaded</string>
+    <string name="update_verifying_package">Verifying and saving the installation package…</string>
+    <string name="update_notification_ready">Tap to install. Saved in %1$s.</string>
+    <string name="update_download_failed_title">Update download failed</string>
+    <string name="update_download_failed">Download or verification failed. Tap to retry; the previously downloaded update is kept.</string>
+    <string name="update_package_downloaded">Installation package downloaded. Tap Install to continue without downloading again.\nSaved in %1$s.</string>
+    <string name="update_install">Install</string>
+    <string name="update_preparing">Preparing update…</string>
+    <string name="update_download_in_progress">Downloading…</string>
+    <string name="update_download_started">Downloading update. You can check progress in the notification or on the update screen.</string>
+    <string name="update_notifications_disabled">Update notifications are disabled. You can install the downloaded package from the update screen.</string>
+    <string name="update_storage_permission_required">Allow storage access to save updates in Download/Freedom/Updates.</string>
+    <string name="update_install_permission_required">Allow this app to install unknown apps, then return to continue installation.</string>
+    <string name="update_download_missing">The installation package is unavailable or no longer valid. Check for updates to download it again.</string>
+    <string name="update_installer_unavailable">Unable to open the system installer. The APK has been kept in Download/Freedom/Updates; you can open it there.</string>
+</resources>

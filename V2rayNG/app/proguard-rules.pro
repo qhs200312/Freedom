@@ -1,21 +1,25 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Protocol/persisted DTOs use Gson reflection and unannotated JSON field names.
+-keep,allowoptimization class com.v2ray.ang.dto.** { *; }
+-keep,allowoptimization class com.v2ray.ang.handler.VerifiedUpdateManager$DownloadedUpdate { *; }
+-keep,allowoptimization class com.v2ray.ang.handler.VerifiedUpdateManager$Store { *; }
+-keep,allowoptimization class com.v2ray.ang.ipquality.IpQuality { *; }
+-keep,allowoptimization class com.v2ray.ang.ipquality.IpQualityCacheEntry { *; }
+-keepclassmembers enum com.v2ray.ang.** { <fields>; }
+-keepattributes Signature,RuntimeVisibleAnnotations,AnnotationDefault,InnerClasses,EnclosingMethod
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# gomobile and JNI refer to their Java bindings by binary name.
+-keep class go.** { *; }
+-keep class corebundle.** { *; }
+-keep class libbox.** { *; }
+-keep class libv2ray.** { *; }
+-keep class com.tencent.mmkv.** { *; }
+-keep class com.v2ray.ang.service.TProxyService { *; }
+-keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep useful release crash traces while removing original source filenames.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}

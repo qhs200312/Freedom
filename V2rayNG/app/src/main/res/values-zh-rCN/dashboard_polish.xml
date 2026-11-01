@@ -13,7 +13,7 @@
     <string name="tasker_authorization_notice">为保证安全，更新后请将已有自动化任务打开并重新保存一次。保存的任务会获得私有授权凭据；这些凭据不会随备份迁移。</string>
     <string name="update_verifying_download">正在下载并验证更新…</string>
     <string name="update_verification_failed">更新被拒绝或无法获取。安装包必须与本应用包名、签名证书一致，且版本更新；请检查网络和安装权限。</string>
-    <string name="update_verified_install_notice">安装包将通过 HTTPS 下载，并与当前应用签名证书核对后才交给系统安装器，仍需你确认安装。分享文件在 15 分钟后失效。</string>
+    <string name="update_verified_install_notice">安装包通过 HTTPS 下载，并校验当前应用签名证书，安装仍需你确认。只保留最新下载的安装包，更新成功后自动删除。</string>
     <string name="storage_recovery_title">配置存储暂时无法使用</string>
     <string name="storage_recovery_message">无法打开配置，原始文件已保留，代理启动已暂停。你可以在补回缺失文件后重试，导出原始文件用于抢救，或归档旧配置并重新开始。</string>
     <string name="storage_recovery_retry">重试打开配置</string>

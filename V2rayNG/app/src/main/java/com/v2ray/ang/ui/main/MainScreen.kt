@@ -40,7 +40,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
-import com.v2ray.ang.handler.VerifiedUpdateManager
+import com.v2ray.ang.ui.checkupdate.UpdateDownloadObserver
+import com.v2ray.ang.ui.checkupdate.UpdateInstallActivity
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.ui.checkupdate.UpdateAvailableDialog
 import com.v2ray.ang.ui.compose.QRCodeDialog
@@ -72,6 +73,7 @@ fun MainScreen(
         WindowInsets.navigationBars.union(WindowInsets.displayCutout).asPaddingValues().calculateBottomPadding() +
             MainNavigationContentClearance
     val context = LocalContext.current
+    UpdateDownloadObserver()
     var selectedDestinationIndex by rememberSaveable { mutableStateOf(MainDestination.Dashboard.ordinal) }
     val selectedDestination = MainDestination.values()[selectedDestinationIndex]
     val navigationBackdropBackground = rememberUpdatedState(MaterialTheme.colorScheme.background)
@@ -240,7 +242,7 @@ fun MainScreen(
             onDismiss = mainViewModel::dismissAvailableUpdate,
             onUpdate = {
                 mainViewModel.dismissAvailableUpdate()
-                scope.launch { VerifiedUpdateManager.downloadAndInstall(context, result) }
+                UpdateInstallActivity.start(context, result)
             },
         )
     }

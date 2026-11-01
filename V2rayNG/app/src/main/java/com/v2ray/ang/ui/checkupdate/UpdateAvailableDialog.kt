@@ -13,19 +13,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.CheckUpdateResult
+import com.v2ray.ang.handler.UpdateNotifications
+import com.v2ray.ang.handler.VerifiedUpdateManager
 
 @Composable
 fun UpdateAvailableDialog(
@@ -33,6 +39,8 @@ fun UpdateAvailableDialog(
     onDismiss: () -> Unit,
     onUpdate: () -> Unit,
 ) {
+    val progress by VerifiedUpdateManager.progress.collectAsStateWithLifecycle()
+    val activeDownload = progress?.takeIf { VerifiedUpdateManager.sameDownload(it.result, result) }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -53,6 +61,26 @@ fun UpdateAvailableDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                if (result.isDownloaded) {
+                    Text(
+                        text = stringResource(R.string.update_package_downloaded, UpdateNotifications.downloadPath()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                activeDownload?.let { download ->
+                    Text(stringResource(
+                        if (download.verifying) R.string.update_verifying_package else R.string.update_download_in_progress,
+                    ))
+                    if (download.percent != null && !download.verifying) {
+                        LinearProgressIndicator(
+                            progress = { download.percent!! / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
                 result.releaseNotes?.takeIf(String::isNotBlank)?.let { notes ->
                     Text(
                         text = notes,
@@ -65,7 +93,7 @@ fun UpdateAvailableDialog(
                     style = MaterialTheme.typography.bodySmall,
                 )
 
-                Surface(
+                if (!result.isDownloaded) Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.58f),
                 ) {
@@ -92,14 +120,24 @@ fun UpdateAvailableDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onUpdate) {
+            Button(
+                onClick = onUpdate,
+                enabled = activeDownload == null,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_cloud_download_24dp),
+                    painter = painterResource(
+                        if (result.isDownloaded) R.drawable.ic_check_update_24dp else R.drawable.ic_cloud_download_24dp,
+                    ),
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.update_now))
+                Text(stringResource(when {
+                    activeDownload != null -> R.string.update_download_in_progress
+                    result.isDownloaded -> R.string.update_install
+                    else -> R.string.update_now
+                }))
             }
         },
         dismissButton = {

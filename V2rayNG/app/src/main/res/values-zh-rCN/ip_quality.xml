@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ip_quality_title">出口 IP 质量</string>
+    <string name="ip_quality_custom">指定 IP 质量</string>
+    <string name="ip_quality_hide">隐藏 IP 地址</string>
+    <string name="ip_quality_hide_summary">首页和 IP 质量详情中的 IP 显示为 *****。</string>
+    <string name="ip_quality_loading">正在检测 IP 质量…</string>
+    <string name="ip_quality_tap">点击查看或检测指定 IP</string>
+    <string name="ip_quality_check">检测</string>
+    <string name="ip_quality_explanation">分类来自第三方网络数据，可能存在误差。“优”按 IP 类型判定，代理或 VPN 标识本身不降低等级。</string>
+    <string name="ip_quality_target">IP 地址（IPv4 或 IPv6）</string>
+    <string name="ip_quality_invalid">请输入有效的 IPv4 或 IPv6 地址。</string>
+    <string name="ip_quality_query">刷新 / 检测 IP</string>
+    <string name="ip_quality_current_exit">使用当前出口 IP</string>
+    <string name="ip_quality_inferred">家宽类型为推断结果，数据源未明确声明类型。</string>
+    <string name="ip_quality_type">IP 类型：%1$s</string>
+    <string name="ip_quality_grade">IP 质量：%1$s</string>
+    <string name="ip_quality_inferred_value">%1$s（推断）</string>
+    <string name="ip_quality_proxy">代理</string>
+    <string name="ip_quality_vpn">VPN</string>
+    <string name="ip_quality_tor">Tor</string>
+    <string name="ip_quality_abuser">滥用记录</string>
+    <string name="ip_quality_organization">组织：%1$s</string>
+    <string name="ip_quality_asn">ASN：%1$s</string>
+    <string name="ip_quality_source">数据来源：%1$s</string>
+    <string name="ip_quality_good">优</string>
+    <string name="ip_quality_normal">普通</string>
+    <string name="ip_quality_risky">风险</string>
+    <string name="ip_quality_residential">家宽 IP</string>
+    <string name="ip_quality_mobile">移动网络 IP</string>
+    <string name="ip_quality_business">商业 IP</string>
+    <string name="ip_quality_hosting">机房 IP</string>
+    <string name="ip_quality_failed">检测失败</string>
+    <string name="ip_quality_cooldown">检测失败，该 IP 将冷却 5 分钟后再试，以节省数据源配额。</string>
+    <string name="ip_quality_no_type">没有可用的类型数据</string>
+    <string name="ip_quality_timeout">请求超时</string>
+    <string name="ip_quality_rate_limited">请求次数受限</string>
+    <string name="ip_quality_mismatch">返回 IP 与请求 IP 不一致</string>
+</resources>

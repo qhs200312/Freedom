@@ -148,6 +148,7 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onResume()
         if (storageUnavailable) return
         mainViewModel.setDashboardVisible(true)
+        mainViewModel.showDownloadedUpdateOnResume()
     }
 
     override fun onPause() {

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ip_quality_title">Exit IP quality</string>
+    <string name="ip_quality_custom">Specified IP quality</string>
+    <string name="ip_quality_hide">Hide IP address</string>
+    <string name="ip_quality_hide_summary">Show ***** on the home screen and in IP quality details.</string>
+    <string name="ip_quality_loading">Checking IP quality…</string>
+    <string name="ip_quality_tap">Tap to inspect an IP address</string>
+    <string name="ip_quality_check">Check</string>
+    <string name="ip_quality_explanation">Classification uses third-party network data and can be inaccurate. “Good” follows the IP type; proxy or VPN flags alone do not change this grade.</string>
+    <string name="ip_quality_target">IP address (IPv4 or IPv6)</string>
+    <string name="ip_quality_invalid">Enter a valid IPv4 or IPv6 address.</string>
+    <string name="ip_quality_query">Refresh / check IP</string>
+    <string name="ip_quality_current_exit">Use current exit IP</string>
+    <string name="ip_quality_inferred">Residential type inferred; the source did not declare a type.</string>
+    <string name="ip_quality_type">IP type: %1$s</string>
+    <string name="ip_quality_grade">IP quality: %1$s</string>
+    <string name="ip_quality_inferred_value">%1$s (inferred)</string>
+    <string name="ip_quality_proxy">Proxy</string>
+    <string name="ip_quality_vpn">VPN</string>
+    <string name="ip_quality_tor">Tor</string>
+    <string name="ip_quality_abuser">Abuse record</string>
+    <string name="ip_quality_organization">Organization: %1$s</string>
+    <string name="ip_quality_asn">ASN: %1$s</string>
+    <string name="ip_quality_source">Source: %1$s</string>
+    <string name="ip_quality_good">Good</string>
+    <string name="ip_quality_normal">Normal</string>
+    <string name="ip_quality_risky">Risky</string>
+    <string name="ip_quality_residential">Residential IP</string>
+    <string name="ip_quality_mobile">Mobile IP</string>
+    <string name="ip_quality_business">Business IP</string>
+    <string name="ip_quality_hosting">Datacenter IP</string>
+    <string name="ip_quality_failed">Lookup failed</string>
+    <string name="ip_quality_cooldown">Lookup failed. This IP is in a five-minute cooldown to protect source quotas.</string>
+    <string name="ip_quality_no_type">No usable classification data</string>
+    <string name="ip_quality_timeout">Timed out</string>
+    <string name="ip_quality_rate_limited">Rate limited</string>
+    <string name="ip_quality_mismatch">Returned IP does not match the requested IP</string>
+</resources>

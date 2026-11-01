@@ -206,6 +206,58 @@ class SecurityRegressionTest {
     }
 
     @Test
+    fun downloadReportsMonotonicBytesAndFinalSize() {
+        val body = ByteArray(32000) { (it % 251).toByte() }
+        serve("Content-Length: ${body.size}\r\n", body) { url ->
+            val progress = mutableListOf<Pair<Long, Long>>()
+            val target = File(temporaryFolder.root, "progress-download")
+            assertTrue(HttpUtil.downloadToFile(UrlContentRequest(url = url), target) { bytes, total ->
+                progress += bytes to total
+            })
+            assertEquals(0L, progress.first().first)
+            assertEquals(body.size.toLong(), progress.last().first)
+            assertTrue(progress.all { it.second == body.size.toLong() })
+            assertTrue(progress.zipWithNext().all { (first, second) -> second.first >= first.first })
+            assertArrayEquals(body, target.readBytes())
+        }
+    }
+
+    @Test
+    fun unknownDownloadLengthStillReportsReceivedBytes() {
+        serve("", "unknown-length".toByteArray()) { url ->
+            val progress = mutableListOf<Pair<Long, Long>>()
+            assertTrue(HttpUtil.downloadToFile(
+                UrlContentRequest(url = url), File(temporaryFolder.root, "unknown-progress"),
+            ) { bytes, total -> progress += bytes to total })
+            assertEquals(14L, progress.last().first)
+            assertTrue(progress.all { it.second == -1L })
+        }
+    }
+
+    @Test
+    fun truncatedDownloadCannotBecomeACompletedPackage() {
+        serve("Content-Length: 100\r\n", "short".toByteArray()) { url ->
+            assertFalse(HttpUtil.downloadToFile(
+                UrlContentRequest(url = url), File(temporaryFolder.root, "truncated"),
+            ))
+        }
+    }
+
+    @Test
+    fun downloadCancellationIsNotReportedAsSuccessOrSwallowed() {
+        serve("Content-Length: 10\r\n", ByteArray(10)) { url ->
+            try {
+                HttpUtil.downloadToFile(
+                    UrlContentRequest(url = url), File(temporaryFolder.root, "cancelled"),
+                ) { _, _ -> throw kotlinx.coroutines.CancellationException("cancel update") }
+                fail("Cancellation must escape the download helper")
+            } catch (expected: kotlinx.coroutines.CancellationException) {
+                assertEquals("cancel update", expected.message)
+            }
+        }
+    }
+
+    @Test
     fun declaredOversizedDownloadIsRejectedBeforeWriting() {
         serve("Content-Length: 268435457\r\n", byteArrayOf()) { url ->
             val target = File(temporaryFolder.root, "declared-large")

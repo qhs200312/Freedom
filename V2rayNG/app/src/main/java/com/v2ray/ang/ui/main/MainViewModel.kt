@@ -20,6 +20,7 @@ import com.v2ray.ang.extension.moveItem
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.UpdateCheckerManager
+import com.v2ray.ang.handler.VerifiedUpdateManager
 import com.v2ray.ang.ui.base.BaseViewModel
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.RuntimeDiagnostics
@@ -143,13 +144,22 @@ class MainViewModel(
 
         viewModelScope.launch {
             try {
+                VerifiedUpdateManager.cleanupInstalled(app)
+                val downloaded = VerifiedUpdateManager.findDownloadedUpdate(app)
+                downloaded?.let { _availableUpdate.value = it }
                 val includePreRelease = MmkvManager.decodeSettingsBool(
                     AppConfig.PREF_CHECK_UPDATE_PRE_RELEASE,
                     false,
                 )
                 UpdateCheckerManager.checkForUpdate(includePreRelease)
                     .takeIf(CheckUpdateResult::hasUpdate)
-                    ?.let { _availableUpdate.value = it }
+                    ?.let { result ->
+                        _availableUpdate.value = downloaded?.takeIf {
+                            VerifiedUpdateManager.sameDownload(it, result)
+                        } ?: result
+                    }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 LogUtil.w(AppConfig.TAG, "Startup update check failed: ${e.message}")
             }
@@ -158,6 +168,20 @@ class MainViewModel(
 
     fun dismissAvailableUpdate() {
         _availableUpdate.value = null
+    }
+
+    fun showDownloadedUpdateOnResume() {
+        if (VerifiedUpdateManager.progress.value != null) return
+        viewModelScope.launch {
+            try {
+                VerifiedUpdateManager.cleanupInstalled(app)
+                VerifiedUpdateManager.findDownloadedUpdate(app)?.let { _availableUpdate.value = it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LogUtil.w(AppConfig.TAG, "Cannot restore downloaded update: ${e.message}")
+            }
+        }
     }
 
     private fun handleServiceEvent(event: MainServiceEvent) {

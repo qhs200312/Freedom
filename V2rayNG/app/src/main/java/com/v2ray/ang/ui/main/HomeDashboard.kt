@@ -76,6 +76,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.v2ray.ang.R
+import com.v2ray.ang.ipquality.IpQualityPanel
+import com.v2ray.ang.ipquality.IpQualityPlatform
+import com.v2ray.ang.ipquality.IpQualityRepository
 import com.v2ray.ang.enums.ProxyMode
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.extension.toTrafficString
@@ -102,6 +105,7 @@ fun HomeDashboard(
     modifier: Modifier = Modifier,
     mapContentTopPadding: Dp = 16.dp,
     contentBottomPadding: Dp = 20.dp,
+    ipQualityRepositoryOverride: IpQualityRepository? = null,
 ) {
     val listState = rememberLazyListState()
 
@@ -126,8 +130,11 @@ fun HomeDashboard(
                 ) {
                     TrafficDataCard(uiState = uiState)
                     TrafficInformationCard(uiState = uiState)
+                    ExitIpCard(
+                        uiState = uiState, onAction = onAction,
+                        repositoryOverride = ipQualityRepositoryOverride,
+                    )
                     DeviceStatusCard(uiState = uiState)
-                    ExitIpCard(uiState = uiState, onAction = onAction)
                 }
             }
         }
@@ -140,6 +147,7 @@ private fun MapStatusPanel(
     onAction: (MainAction) -> Unit,
     contentTopPadding: Dp,
 ) {
+    val hideIp by IpQualityPlatform.hidden.collectAsStateWithLifecycle()
     val location = uiState.geoLocation
     val isDarkTheme = LocalDarkTheme.current
     val mapBackground = if (isDarkTheme) DashboardBackground else DashboardLightBackground
@@ -247,7 +255,7 @@ private fun MapStatusPanel(
             val ipv6 = location?.effectiveIpv6.orEmpty()
             if (ipv4.isNotBlank()) {
                 Text(
-                    text = stringResource(R.string.home_ipv4_value, ipv4),
+                    text = stringResource(R.string.home_ipv4_value, if (hideIp) "*****" else ipv4),
                     style = MaterialTheme.typography.bodySmall,
                     color = mapSecondaryContentColor,
                     maxLines = 1,
@@ -256,7 +264,7 @@ private fun MapStatusPanel(
             }
             if (ipv6.isNotBlank()) {
                 Text(
-                    text = stringResource(R.string.home_ipv6_value, ipv6),
+                    text = stringResource(R.string.home_ipv6_value, if (hideIp) "*****" else ipv6),
                     style = MaterialTheme.typography.bodySmall,
                     color = mapSecondaryContentColor,
                     maxLines = 1,
@@ -331,28 +339,6 @@ private fun TrafficDataCard(uiState: MainUiState) {
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(Modifier.height(12.dp))
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.home_live_speed),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ChartLegend(stringResource(R.string.home_download), DownloadGreen)
-                ChartLegend(stringResource(R.string.home_upload), UploadBlue)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        SpeedHistoryChart(
-            uploadSpeed = upload,
-            downloadSpeed = download,
-        )
     }
 }
 
@@ -402,14 +388,6 @@ private fun HeadlineSpeed(label: String, value: String, color: Color, modifier: 
 @Composable
 private fun dashboardPanelColor(): Color =
     if (LocalDarkTheme.current) Color(0xFF202C33) else Color(0xFFF2F7FA)
-
-@Composable
-private fun ChartLegend(label: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(color))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
 
 @Composable
 internal fun SpeedHistoryChart(
@@ -705,7 +683,12 @@ private fun DashboardCardTitle(title: String) {
 }
 
 @Composable
-private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
+private fun ExitIpCard(
+    uiState: MainUiState,
+    onAction: (MainAction) -> Unit,
+    repositoryOverride: IpQualityRepository? = null,
+) {
+    val hideIp by IpQualityPlatform.hidden.collectAsStateWithLifecycle()
     val location = uiState.geoLocation
     val unavailable = stringResource(R.string.home_location_unavailable)
     val connectionFailed = stringResource(R.string.home_exit_connection_failed)
@@ -732,21 +715,28 @@ private fun ExitIpCard(uiState: MainUiState, onAction: (MainAction) -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = if (uiState.exitIpFailed) connectionFailed else buildList {
-                        location?.effectiveIpv4?.takeIf(String::isNotBlank)?.let {
-                            add(stringResource(R.string.home_ipv4_value, it))
-                        }
-                        location?.effectiveIpv6?.takeIf(String::isNotBlank)?.let {
-                            add(stringResource(R.string.home_ipv6_value, it))
-                        }
-                    }.joinToString("\n").ifBlank {
-                        if (uiState.isLocating) stringResource(R.string.home_locating) else "-"
+                IpQualityPanel(
+                    exitIp = if (uiState.exitIpFailed) "" else location?.ip.orEmpty(),
+                    useProxy = uiState.isRunning,
+                    repositoryOverride = repositoryOverride,
+                    addressContent = {
+                        Text(
+                            text = if (uiState.exitIpFailed) connectionFailed else buildList {
+                                location?.effectiveIpv4?.takeIf(String::isNotBlank)?.let {
+                                    add(stringResource(R.string.home_ipv4_value, if (hideIp) "*****" else it))
+                                }
+                                location?.effectiveIpv6?.takeIf(String::isNotBlank)?.let {
+                                    add(stringResource(R.string.home_ipv6_value, if (hideIp) "*****" else it))
+                                }
+                            }.joinToString("\n").ifBlank {
+                                if (uiState.isLocating) stringResource(R.string.home_locating) else "-"
+                            },
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
                     },
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (uiState.exitIpFailed) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface,
                 )
             }
             IconButton(

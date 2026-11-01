@@ -67,6 +67,7 @@ func (c *SingBoxController) Stop() error {
 
 func (c *SingBoxController) Close() {
 	if c != nil && c.server != nil {
+		_ = c.server.CloseService()
 		c.server.Close()
 		c.server = nil
 		c.running = false
@@ -96,6 +97,7 @@ func (c *SingBoxController) DownlinkTotal() int64 {
 	_, downlink := instance.TrafficManager().Total()
 	return downlink
 }
+
 func SingBoxVersion() string                 { return libbox.Version() }
 func CheckSingBoxConfig(config string) error { return libbox.CheckConfig(config) }
 

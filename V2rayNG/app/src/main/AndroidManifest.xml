@@ -42,6 +42,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".AngApplication"
@@ -207,12 +209,19 @@
             android:name=".ui.checkupdate.CheckUpdateActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.checkupdate.UpdateInstallActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.backup.BackupActivity"
             android:exported="false" />
         <service
             android:name=".service.CoreWarmupService"
             android:exported="false"
             android:process=":RunSoLibV2RayDaemon" />
+        <service
+            android:name=".service.UpdateDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".service.CoreVpnService"
@@ -285,6 +294,13 @@
         <receiver
             android:name=".receiver.NotificationStopReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".receiver.UpdateInstalledReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".receiver.WidgetProvider"
@@ -371,6 +387,15 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/cache_paths" />
+        </provider>
+        <provider
+            android:name=".receiver.UpdateFileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
         </provider>
 
     </application>

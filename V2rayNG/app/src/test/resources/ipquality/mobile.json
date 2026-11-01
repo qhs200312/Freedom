@@ -1,0 +1,11 @@
+{
+  "ip": "203.0.113.8",
+  "is_datacenter": false,
+  "is_mobile": true,
+  "is_proxy": true,
+  "is_vpn": true,
+  "is_tor": false,
+  "is_abuser": false,
+  "company": { "name": "Example Mobile", "type": "isp" },
+  "asn": { "asn": 64500, "org": "Example Network", "type": "isp" }
+}

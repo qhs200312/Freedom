@@ -22,8 +22,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 24
         targetSdk = 37
-        versionCode = 786
-        versionName = "2.8.5"
+        versionCode = providers.gradleProperty("FREEDOM_VERSION_CODE").orElse("787").get().toInt()
+        versionName = providers.gradleProperty("FREEDOM_VERSION_NAME").orElse("2.8.5").get()
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -60,7 +60,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfigs.findByName("freedomRelease")?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

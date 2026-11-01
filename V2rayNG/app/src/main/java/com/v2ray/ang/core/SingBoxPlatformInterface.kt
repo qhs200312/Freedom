@@ -61,8 +61,6 @@ class SingBoxPlatformInterface(
 
     override fun openTun(options: TunOptions): Int = openTunCallback(options)
 
-    override fun useProcFS(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
-
     override fun findConnectionOwner(
         ipProtocol: Int,
         sourceAddress: String,
@@ -70,12 +68,18 @@ class SingBoxPlatformInterface(
         destinationAddress: String,
         destinationPort: Int,
     ): ConnectionOwner {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { "android: connection owner lookup requires API 29" }
-        val uid = connectivity.getConnectionOwnerUid(
-            ipProtocol,
-            InetSocketAddress(sourceAddress, sourcePort),
-            InetSocketAddress(destinationAddress, destinationPort),
-        )
+        val uid = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            connectivity.getConnectionOwnerUid(
+                ipProtocol,
+                InetSocketAddress(sourceAddress, sourcePort),
+                InetSocketAddress(destinationAddress, destinationPort),
+            )
+        } else {
+            // libbox 1.14.4 delegates legacy Android's procfs lookup to this callback.
+            Libbox.findConnectionOwner(
+                ipProtocol, sourceAddress, sourcePort, destinationAddress, destinationPort,
+            ).userId
+        }
         check(uid != Process.INVALID_UID) { "android: connection owner not found" }
         val packages = appContext.packageManager.getPackagesForUid(uid).orEmpty().toList()
         return ConnectionOwner().apply {

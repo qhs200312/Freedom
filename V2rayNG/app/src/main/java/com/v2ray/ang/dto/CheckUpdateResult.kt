@@ -8,4 +8,5 @@ data class CheckUpdateResult(
     val error: String? = null,
     val isPreRelease: Boolean = false,
     val downloadDigest: String? = null,
+    val isDownloaded: Boolean = false,
 )

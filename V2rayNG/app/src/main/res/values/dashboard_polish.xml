@@ -13,7 +13,7 @@
     <string name="tasker_authorization_notice">For security, open and save existing automation tasks once after this update. Saved tasks receive a private authorization token. Tokens are not included in backups.</string>
     <string name="update_verifying_download">Downloading and verifying the update...</string>
     <string name="update_verification_failed">Update rejected or unavailable. The APK must match the installed package and signing certificate and have a newer version. Check network access and installation permissions.</string>
-    <string name="update_verified_install_notice">The APK will be downloaded over HTTPS and checked against the installed signing certificate before opening the system installer. You must confirm installation. Shared files expire after 15 minutes.</string>
+    <string name="update_verified_install_notice">The APK is downloaded over HTTPS and verified against the installed signing certificate. Installation requires your confirmation. Only the latest downloaded package is kept, and it is deleted after a successful update.</string>
     <string name="storage_recovery_title">Configuration storage unavailable</string>
     <string name="storage_recovery_message">Your configuration could not be opened. The original files have been preserved, and proxy startup is paused. Retry after restoring the missing files, export the raw files for recovery, or archive them and start again.</string>
     <string name="storage_recovery_retry">Retry opening configuration</string>

@@ -4,6 +4,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.dto.UrlContentRequest
+import kotlinx.coroutines.CancellationException
 import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -263,7 +264,7 @@ object HttpUtil {
         }
     }
 
-    private fun buildOkHttpClient(
+    internal fun buildOkHttpClient(
         timeout: Int,
         httpPort: Int,
         socksPort: Int,
@@ -352,7 +353,8 @@ object HttpUtil {
 
     fun downloadToFile(
         request: UrlContentRequest,
-        targetFile: File
+        targetFile: File,
+        onProgress: ((downloaded: Long, total: Long) -> Unit)? = null,
     ): Boolean {
         var url = request.url ?: return false
         val client = buildOkHttpClient(
@@ -382,24 +384,30 @@ object HttpUtil {
                         return false
                     }
                     val body = response.body
-                    if (body.contentLength() > MAX_DOWNLOAD_BYTES) return false
+                    val contentLength = body.contentLength()
+                    if (contentLength > MAX_DOWNLOAD_BYTES) return false
                     body.byteStream().use { input ->
                         targetFile.outputStream().use { output ->
                             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                             var total = 0L
+                            onProgress?.invoke(0, contentLength)
                             while (true) {
                                 val read = input.read(buffer)
                                 if (read <= 0) break
                                 total += read
                                 if (total > MAX_DOWNLOAD_BYTES) throw IOException("Download too large")
                                 output.write(buffer, 0, read)
+                                onProgress?.invoke(total, contentLength)
                             }
+                            if (contentLength >= 0 && total != contentLength) throw IOException("Incomplete download")
                         }
                     }
                     return true
                 }
             }
             false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to download file", e)
             false

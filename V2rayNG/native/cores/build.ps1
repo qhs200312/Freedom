@@ -24,16 +24,16 @@ $tags = @(
 Push-Location (Join-Path $PSScriptRoot 'AndroidCoreBundle')
 try {
     $xrayVersion = (& $Go list -m -f '{{.Version}}' github.com/xtls/xray-core).Trim()
-    if ($LASTEXITCODE -ne 0 -or $xrayVersion -ne 'v1.260327.1-0.20261017152356-92ccc939aaf4') {
-        throw 'The Xray module must match official v26.10.17'
+    if ($LASTEXITCODE -ne 0 -or $xrayVersion -ne 'v1.260327.1-0.20261031132019-a4a3dff5b20c') {
+        throw 'The Xray module must match official v26.10.31'
     }
     $singBoxVersion = (& $Go list -m -f '{{.Version}}' github.com/sagernet/sing-box).Trim()
-    if ($LASTEXITCODE -ne 0 -or $singBoxVersion -ne 'v1.14.3') {
-        throw 'The sing-box module must match official v1.14.3'
+    if ($LASTEXITCODE -ne 0 -or $singBoxVersion -ne 'v1.14.4') {
+        throw 'The sing-box module must match official v1.14.4'
     }
     & $Go mod verify
     if ($LASTEXITCODE -ne 0) { throw 'Go dependency verification failed' }
-    $ldflags = '-X github.com/sagernet/sing-box/constant.Version=1.14.3 ' +
+    $ldflags = '-X github.com/sagernet/sing-box/constant.Version=1.14.4 ' +
         '-X runtime.godebugDefault=multipathtcp=0,tlssha1=1 ' +
         '-s -w -buildid= -checklinkname=0'
     & $Gomobile bind -v -o $outputPath -target android -androidapi 24 -libname=cores `

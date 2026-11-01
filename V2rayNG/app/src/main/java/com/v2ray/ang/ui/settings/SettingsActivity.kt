@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.VPN
 import com.v2ray.ang.R
+import com.v2ray.ang.ipquality.IpQualityPrivacySetting
 import com.v2ray.ang.core.CoreSelector
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
@@ -305,6 +306,7 @@ fun SettingsScreen(
                 onExpandedChange = { uiSettingsExpanded = it }
             )
             if (uiSettingsExpanded) {
+                IpQualityPrivacySetting()
                 SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_speed_enabled),
                     summary = stringResource(R.string.summary_pref_speed_enabled),

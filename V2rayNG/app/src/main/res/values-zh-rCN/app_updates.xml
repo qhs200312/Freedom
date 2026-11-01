@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_notification_channel">应用更新</string>
+    <string name="update_downloading_version">正在下载更新 %1$s</string>
+    <string name="update_downloaded_version">更新 %1$s 已下载</string>
+    <string name="update_download_progress">%1$d%% · %2$s / %3$s</string>
+    <string name="update_download_bytes">已下载 %1$s</string>
+    <string name="update_verifying_package">正在校验并保存安装包…</string>
+    <string name="update_notification_ready">点击安装，安装包已保存至 %1$s。</string>
+    <string name="update_download_failed_title">更新下载失败</string>
+    <string name="update_download_failed">下载或校验失败，点击重试；之前已下载的安装包会继续保留。</string>
+    <string name="update_package_downloaded">安装包已下载，点击“安装”即可继续，无需重新下载。\n保存位置：%1$s。</string>
+    <string name="update_install">安装</string>
+    <string name="update_preparing">正在准备更新…</string>
+    <string name="update_download_in_progress">正在下载…</string>
+    <string name="update_download_started">更新已开始下载，可在通知栏或更新页面查看进度。</string>
+    <string name="update_notifications_disabled">更新通知未开启，下载完成后可从更新页面安装。</string>
+    <string name="update_storage_permission_required">请允许存储权限，以便将安装包保存到 Download/Freedom/Updates。</string>
+    <string name="update_install_permission_required">请允许本应用“安装未知应用”，返回后继续安装。</string>
+    <string name="update_download_missing">安装包不存在或已失效，请检查更新后重新下载。</string>
+    <string name="update_installer_unavailable">无法打开系统安装器，安装包已保留在 Download/Freedom/Updates，可前往该目录手动安装。</string>
+</resources>

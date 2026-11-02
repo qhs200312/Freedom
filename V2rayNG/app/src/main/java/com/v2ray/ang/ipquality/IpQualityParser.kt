@@ -103,6 +103,8 @@ object IpQualityParser {
         return IpQualityOutcome.Success(IpQuality(
             ip = ip, source = source, type = type, organization = organization,
             asn = asn?.let(::normalizeAsn), inferred = inferred,
+            // ident.me can label consumer ISP ranges as business; ask another source first.
+            typeNeedsConfirmation = source == IpQualitySource.identMe && declared.equals("business", true),
             isProxy = flags.flag(proxyKey), isVpn = flags.flag(vpnKey),
             isTor = flags.flag(torKey), isAbuser = flags.flag(abuserKey),
         ))

@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -32,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -41,6 +45,7 @@ import com.v2ray.ang.AppConfig.BUILTIN_OUTBOUND_TAGS
 import com.v2ray.ang.AppConfig.TAG_PROXY
 import com.v2ray.ang.R
 import com.v2ray.ang.core.RoutingTargets
+import com.v2ray.ang.routing.RoutingRuleLimits
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.extension.toast
@@ -82,16 +87,29 @@ class RoutingEditActivity : BaseComponentActivity() {
     private var initial: RulesetItem? = null
     private lateinit var nodeOptions: List<RoutingNodeOption>
     private var canUseProcess: Boolean = false
+    private var ready by mutableStateOf(false)
+    private var saving = false
 
     override fun onStorageReady(savedInstanceState: Bundle?) {
         super.onStorageReady(savedInstanceState)
-        initial = SettingsManager.getRoutingRuleset(position)
-        nodeOptions = loadRoutingNodeOptions(this)
-        canUseProcess = SettingsManager.canUseProcessRouting()
+        lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                Triple(SettingsManager.getRoutingRuleset(position), loadRoutingNodeOptions(this@RoutingEditActivity),
+                    SettingsManager.canUseProcessRouting())
+            }
+            initial = loaded.first
+            nodeOptions = loaded.second
+            canUseProcess = loaded.third
+            ready = true
+        }
     }
 
     @Composable
     override fun ScreenContent() {
+        if (!ready) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return
+        }
         RoutingEditScreen(
             position = position,
             initial = initial,
@@ -105,6 +123,7 @@ class RoutingEditActivity : BaseComponentActivity() {
     }
 
     private fun saveServer(rulesetItem: RulesetItem): Boolean {
+        if (saving) return false
         if (rulesetItem.remarks.isNullOrEmpty()) {
             toast(R.string.sub_setting_remarks)
             return false
@@ -112,9 +131,17 @@ class RoutingEditActivity : BaseComponentActivity() {
         if (position < 0 && rulesetItem.id.isEmpty()) {
             rulesetItem.id = UUID.randomUUID().toString()
         }
-        SettingsManager.saveRoutingRuleset(position, rulesetItem)
-        toastSuccess(R.string.toast_success)
-        finish()
+        saving = true
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { SettingsManager.saveRoutingRuleset(position, rulesetItem) }
+                toastSuccess(R.string.toast_success)
+                finish()
+            } catch (_: Exception) {
+                saving = false
+                toast(R.string.toast_failure)
+            }
+        }
         return true
     }
 
@@ -146,8 +173,11 @@ fun RoutingEditScreen(
 
     var remarks by rememberSaveable { mutableStateOf(initial?.remarks ?: "") }
     var locked by rememberSaveable { mutableStateOf(initial?.locked == true) }
-    var domain by rememberSaveable { mutableStateOf(initial?.domain?.joinToString(",") ?: "") }
-    var ip by rememberSaveable { mutableStateOf(initial?.ip?.joinToString(",") ?: "") }
+    val canEditDomains = remember(initial?.domain) { RoutingRuleLimits.canEdit(initial?.domain) }
+    val canEditIps = remember(initial?.ip) { RoutingRuleLimits.canEdit(initial?.ip) }
+    val largeContent = !canEditDomains || !canEditIps
+    var domain by rememberSaveable { mutableStateOf(if (canEditDomains) initial?.domain?.joinToString(",").orEmpty() else "") }
+    var ip by rememberSaveable { mutableStateOf(if (canEditIps) initial?.ip?.joinToString(",").orEmpty() else "") }
     var processText by rememberSaveable { mutableStateOf(initial?.process?.joinToString(",") ?: "") }
     var protocol by rememberSaveable { mutableStateOf(initial?.protocol?.joinToString(",") ?: "") }
     var network by rememberSaveable { mutableStateOf(initial?.network ?: "") }
@@ -175,12 +205,13 @@ fun RoutingEditScreen(
     }
 
     fun buildRuleset(): RulesetItem {
-        val rulesetItem = SettingsManager.getRoutingRuleset(position) ?: RulesetItem()
+        val rulesetItem = initial?.copy() ?: RulesetItem()
         rulesetItem.apply {
             this.remarks = remarks
             this.locked = locked
-            this.domain = if (matchMode == RoutingMatchMode.APPS) null else RoutingTargets.parseDomains(domain)
-            this.ip = ip.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
+            this.domain = if (!canEditDomains) initial?.domain
+                else if (matchMode == RoutingMatchMode.APPS) null else RoutingTargets.parseDomains(domain)
+            this.ip = if (!canEditIps) initial?.ip else ip.takeIf { matchMode == RoutingMatchMode.ADVANCED }.nullIfBlank()
                 ?.split(",")
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
@@ -252,7 +283,8 @@ fun RoutingEditScreen(
                     SegmentedButton(
                         selected = matchMode == mode,
                         onClick = { matchMode = mode },
-                        enabled = mode != RoutingMatchMode.APPS || canUseProcess || !initial?.process.isNullOrEmpty(),
+                        enabled = (!largeContent || mode == matchMode) &&
+                            (mode != RoutingMatchMode.APPS || canUseProcess || !initial?.process.isNullOrEmpty()),
                         shape = SegmentedButtonDefaults.itemShape(index, modes.size),
                     ) { Text(stringResource(modeTitles[index])) }
                 }
@@ -276,17 +308,34 @@ fun RoutingEditScreen(
                     outboundProfileId = id
                 },
             )
-            if (matchMode != RoutingMatchMode.APPS) FormTextField(
+            if (largeContent) Text(
+                stringResource(R.string.routing_yaml_large_editor),
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (matchMode != RoutingMatchMode.APPS && !canEditDomains) Text(
+                RoutingRuleLimits.summary(initial?.domain.orEmpty()), modifier = Modifier.padding(16.dp),
+            )
+            if (matchMode != RoutingMatchMode.APPS && canEditDomains) FormTextField(
                 label = stringResource(R.string.routing_settings_domain),
                 placeholder = stringResource(R.string.routing_domain_example),
                 value = domain,
-                onValueChange = { domain = it }
+                onValueChange = {
+                    if (it.length <= RoutingRuleLimits.MAX_EDIT_CHARS) domain = it
+                    else context.toast(R.string.routing_yaml_large_editor)
+                }
             )
-            if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
+            if (matchMode == RoutingMatchMode.ADVANCED && !canEditIps) Text(
+                RoutingRuleLimits.summary(initial?.ip.orEmpty()), modifier = Modifier.padding(16.dp),
+            )
+            if (matchMode == RoutingMatchMode.ADVANCED && canEditIps) FormTextField(
                 label = stringResource(R.string.routing_settings_ip),
                 placeholder = stringResource(R.string.routing_settings_tips),
                 value = ip,
-                onValueChange = { ip = it }
+                onValueChange = {
+                    if (it.length <= RoutingRuleLimits.MAX_EDIT_CHARS) ip = it
+                    else context.toast(R.string.routing_yaml_large_editor)
+                }
             )
             if (matchMode == RoutingMatchMode.ADVANCED) FormTextField(
                 label = stringResource(R.string.routing_settings_process),

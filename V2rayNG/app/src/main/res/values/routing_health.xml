@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_health_connection_failed">Connection failed</string>
+    <string name="routing_health_title">Routing node status</string>
+    <string name="routing_health_single_warning">%1$s routing unavailable</string>
+    <string name="routing_health_many_warning">%1$d routing nodes unavailable</string>
+    <string name="routing_health_view">View ›</string>
+    <string name="routing_health_retry">Check again</string>
+    <string name="routing_health_rules">Affected rules: %1$s</string>
+    <string name="routing_health_unknown">Not checked</string>
+    <string name="routing_health_checking">Checking…</string>
+    <string name="routing_health_retrying">Unavailable · checking again…</string>
+    <string name="routing_health_healthy">Available</string>
+    <string name="routing_health_unavailable">Unavailable</string>
+    <string name="routing_health_missing">Routing target not loaded</string>
+    <string name="routing_health_disconnected">Not connected</string>
+    <string name="routing_health_explanation">Checks HTTPS through each running routing target. A failed check is retried with another destination. Results do not cover every website or UDP. Checks run on connection and once per minute while this screen is visible.</string>
+</resources>

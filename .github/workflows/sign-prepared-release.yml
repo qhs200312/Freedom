@@ -1,0 +1,111 @@
+name: Sign prepared release
+run-name: Sign ${{ inputs.tag }} prepared APKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing draft release tag
+        required: true
+        type: string
+      release_id:
+        description: Existing draft release ID
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      KS_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
+      KS_STORE_PASS: ${{ secrets.APP_KEYSTORE_PASSWORD }}
+      KS_ALIAS: ${{ secrets.APP_KEYSTORE_ALIAS }}
+      KS_KEY_PASS: ${{ secrets.APP_KEY_PASSWORD }}
+    steps:
+      - name: Sign and verify the prepared draft APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')" = true
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.tag_name')" = "$TAG"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.target_commitish')" = "$GITHUB_SHA"
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          if [[ ! -x "$tools/apksigner" ]]; then
+            sdkmanager "build-tools;36.0.0" > "$RUNNER_TEMP/freedom-sdk.log"
+          fi
+          work="$RUNNER_TEMP/freedom-sign"
+          mkdir -p "$work/unsigned" "$work/signed"
+          key="$work/release.jks"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$KS_BASE64" | base64 --decode > "$key"
+          unset KS_BASE64
+          export SIGN_WORK="$work"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-unsigned.apk' --pattern 'unsigned-apks.json' --dir "$work/unsigned"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          work = pathlib.Path(os.environ["SIGN_WORK"])
+          records = json.loads((work / "unsigned/unsigned-apks.json").read_text())
+          expected = {"arm64-v8a", "armeabi-v7a", "x86_64", "x86", "universal"}
+          assert len(records) == 5
+          assert {record["abi"] for record in records} == expected
+          for record in records:
+              name = record["file"]
+              assert pathlib.Path(name).name == name
+              assert record["versionName"] == os.environ["TAG"][1:]
+              assert name == f'Freedom_{record["versionName"]}-fdroid_{record["abi"]}-unsigned.apk'
+              source = work / "unsigned" / name
+              assert hashlib.sha256(source.read_bytes()).hexdigest() == record["sha256"]
+          PY
+          expected_cert=f7e05738c510d927c2f29fb0dd3ead026e85d0964991a4217c2b52fa4486e7ac
+          for source in "$work"/unsigned/*-unsigned.apk; do
+            file="$(basename "$source" -unsigned.apk).apk"
+            output="$work/signed/$file"
+            "$tools/zipalign" -P 16 -f 4 "$source" "$work/aligned.apk"
+            "$tools/apksigner" sign --ks "$key" --ks-key-alias "$KS_ALIAS" \
+              --ks-pass env:KS_STORE_PASS --key-pass env:KS_KEY_PASS \
+              --v4-signing-enabled false --out "$output" "$work/aligned.apk"
+            "$tools/apksigner" verify --verbose --print-certs "$output" > "$work/certificate.log"
+            cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$work/certificate.log")"
+            test "$cert" = "$expected_cert"
+            "$tools/zipalign" -P 16 -c 4 "$output"
+            "$tools/aapt2" dump badging "$output" > "$work/badging.txt"
+            grep -q "package: name='com.v2ray.ang.fdroid'" "$work/badging.txt"
+            grep -q "versionName='${TAG#v}'" "$work/badging.txt"
+            if grep -q '^application-debuggable' "$work/badging.txt"; then
+              echo 'Refusing a debuggable APK'
+              exit 1
+            fi
+            printf 'PASS: %s; original certificate; 16 KiB alignment; non-debuggable\n' "$file"
+          done
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, zipfile
+          work = pathlib.Path(os.environ["SIGN_WORK"])
+          records = json.loads((work / "unsigned/unsigned-apks.json").read_text())
+          signed = []
+          for record in records:
+              name = record["file"].replace("-unsigned.apk", ".apk")
+              output = work / "signed" / name
+              with zipfile.ZipFile(work / "unsigned" / record["file"]) as before, zipfile.ZipFile(output) as after:
+                  for entry in before.infolist():
+                      assert hashlib.sha256(before.read(entry.filename)).digest() == hashlib.sha256(after.read(entry.filename)).digest()
+              signed.append({"file": name, "versionName": record["versionName"],
+                             "versionCode": record["versionCode"], "bytes": output.stat().st_size,
+                             "sha256": hashlib.sha256(output.read_bytes()).hexdigest()})
+          (work / "signed/signed-apks.json").write_text(json.dumps(signed, indent=2) + "\n")
+          (work / "signed/SHA256SUMS.txt").write_text("".join(f'{r["sha256"]}  {r["file"]}\n' for r in signed))
+          PY
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')" = true
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" \
+            "$work"/signed/*.apk "$work/signed/SHA256SUMS.txt" "$work/signed/signed-apks.json"
+          echo 'Signed assets uploaded to draft. Publication requires separate verification.'

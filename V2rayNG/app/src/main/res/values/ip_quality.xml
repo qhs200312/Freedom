@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ip_quality_unconfirmed_value">%1$s (unconfirmed)</string>
+    <string name="ip_quality_confirmation_note">ident.me reported business, but other sources could not confirm the type. Consumer ISP ranges can receive this classification.</string>
     <string name="ip_quality_title">Exit IP quality</string>
     <string name="ip_quality_custom">Specified IP quality</string>
     <string name="ip_quality_hide">Hide IP address</string>

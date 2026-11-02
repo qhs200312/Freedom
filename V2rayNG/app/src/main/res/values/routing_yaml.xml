@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_yaml_import">Import YAML rules</string>
+    <string name="routing_yaml_description">Import a Clash classical provider with a payload list. Paste YAML or an HTTPS link, or choose a local file. GitHub file links are supported. The selected destination applies to all imported rules.</string>
+    <string name="routing_yaml_input">YAML content or HTTPS link</string>
+    <string name="routing_yaml_paste">Paste</string>
+    <string name="routing_yaml_file">Choose file</string>
+    <string name="routing_yaml_selected_file">Selected file: %1$s</string>
+    <string name="routing_yaml_default_name">YAML routing rules</string>
+    <string name="routing_yaml_loading">Processing rules…</string>
+    <string name="routing_yaml_preview">%1$d unique entries: %2$d domains, %3$d IP ranges, %4$d ports, %5$d networks.</string>
+    <string name="routing_yaml_priority">Existing rules are kept. Imported rules take priority over existing domain/IP rules. Reconnect to apply changes.</string>
+    <string name="routing_yaml_check">Preview</string>
+    <string name="routing_yaml_confirm">Import rules</string>
+    <string name="routing_yaml_imported">Imported %1$d rule entries. Reconnect to apply.</string>
+    <string name="routing_yaml_error_format">Invalid format near line %1$d. Use payload: followed by a list of rule strings, not a complete Clash configuration. Use UTF-8 encoding.</string>
+    <string name="routing_yaml_error_unsupported">Line %1$d (%2$s) cannot be converted. Supported: DOMAIN, DOMAIN-SUFFIX, DOMAIN-KEYWORD, DOMAIN-REGEX, IP-CIDR, IP-CIDR6, DST-PORT and NETWORK. Extra outbound columns and no-resolve are not supported. Nothing was imported.</string>
+    <string name="routing_yaml_error_value">Invalid value at line %1$d (%2$s). Check the domain, IP range, port or network.</string>
+    <string name="routing_yaml_error_empty">No rule entries found.</string>
+    <string name="routing_yaml_error_size">Safety limit exceeded. Split the file or remove existing rules: up to 8 MiB, 50,000 unique rules, 16 KiB per line, 128 regex rules and 256 port rules per file. Repeated entries, normalized output and total stored rules are also bounded.</string>
+    <string name="routing_yaml_error_url">Enter an HTTPS rule link without embedded login details.</string>
+    <string name="routing_yaml_error_http">Download failed (HTTP %1$s). Check the rule link and try again.</string>
+    <string name="routing_yaml_error_read">Could not read the rules. Check the file permission or network connection, then retry.</string>
+    <string name="routing_yaml_error_timeout">Parsing exceeded its time budget. Split the rule file and retry.</string>
+    <string name="routing_yaml_error_cancelled">Import cancelled.</string>
+    <string name="routing_yaml_error_busy">The previous parsing task is stopping. Retry in a moment.</string>
+    <string name="routing_yaml_error_paste">Paste supports up to 64K characters. Import larger rules using a file or link.</string>
+    <string name="routing_yaml_large_editor">Large rule content is shown as a summary. You can edit the name and destination. To change its contents, remove this rule and import the updated file.</string>
+</resources>

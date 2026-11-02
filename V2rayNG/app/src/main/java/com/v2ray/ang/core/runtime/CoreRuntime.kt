@@ -7,6 +7,7 @@ import com.v2ray.ang.dto.OutboundTrafficStat
 internal interface CoreRuntime {
     val type: RuntimeCore
     val isRunning: Boolean
+    val routingHealthEndpoints: List<com.v2ray.ang.routinghealth.RoutingHealthEndpoint> get() = emptyList()
     fun start()
     fun stop()
     fun restart(shouldContinue: () -> Boolean): Boolean {

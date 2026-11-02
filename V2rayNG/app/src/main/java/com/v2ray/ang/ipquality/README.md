@@ -32,6 +32,14 @@ the start of the query. An unresolved earlier request never triggers additional
 quota spending merely because one second elapsed. Each source has an 8-second
 timeout. A declared winner cancels the other requests immediately.
 
+One narrow exception: ident.me's `business` declaration is provisional because
+it also labels consumer ISP ranges this way. Continue the normal quota-gated
+waves for a firm classification. Business declarations from other sources remain
+business; ASN ISP ownership never overrides an explicit business company.
+If verification is unavailable, retain the provisional declaration ahead of an
+inferred default and display "unconfirmed". Classification cache version 2
+invalidates older success entries while preserving failure cooldowns.
+
 An HTTP-200 response containing a recognized record but no type is inferred
 residential. An empty/missing record is `noType`; malformed JSON is `failed`.
 ident.me must return a matching IP, including canonical IPv6 equivalence.

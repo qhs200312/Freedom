@@ -25,8 +25,6 @@ object VmessFmt : FmtBase() {
             return parseVmessStd(str)
         }
 
-        val config = ProfileItem.create(EConfigType.VMESS)
-
         var result = str.replace(EConfigType.VMESS.protocolScheme, "")
         result = Utils.decode(result)
         if (TextUtils.isEmpty(result)) {
@@ -34,6 +32,11 @@ object VmessFmt : FmtBase() {
             return null
         }
         val vmessQRCode = JsonUtil.fromJson(result, VmessQRCode::class.java) ?: return null
+        return fromQRCode(vmessQRCode)
+    }
+
+    internal fun fromQRCode(vmessQRCode: VmessQRCode): ProfileItem? {
+        val config = ProfileItem.create(EConfigType.VMESS)
         // Although VmessQRCode fields are non null, looks like Gson may still create null fields
         if (TextUtils.isEmpty(vmessQRCode.add)
             || TextUtils.isEmpty(vmessQRCode.port)

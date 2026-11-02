@@ -1,7 +1,11 @@
 package com.v2ray.ang.ui.checkupdate
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,12 +28,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.CheckUpdateResult
+import com.v2ray.ang.extension.toastError
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.UpdateNotifications
 import com.v2ray.ang.handler.VerifiedUpdateManager
 
@@ -39,6 +46,9 @@ fun UpdateAvailableDialog(
     onDismiss: () -> Unit,
     onUpdate: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val title = stringResource(R.string.update_new_version_found, result.latestVersion.orEmpty())
+    val downloadLabel = stringResource(R.string.update_manual_download_browser)
     val progress by VerifiedUpdateManager.progress.collectAsStateWithLifecycle()
     val activeDownload = progress?.takeIf { VerifiedUpdateManager.sameDownload(it.result, result) }
     AlertDialog(
@@ -51,7 +61,7 @@ fun UpdateAvailableDialog(
             )
         },
         title = {
-            Text(stringResource(R.string.update_new_version_found, result.latestVersion.orEmpty()))
+            Text(title)
         },
         text = {
             Column(
@@ -81,13 +91,7 @@ fun UpdateAvailableDialog(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                 }
-                result.releaseNotes?.takeIf(String::isNotBlank)?.let { notes ->
-                    Text(
-                        text = notes,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
+                UpdateReleaseNotes(result.releaseNotes.orEmpty())
                 Text(
                     text = stringResource(R.string.update_verified_install_notice),
                     style = MaterialTheme.typography.bodySmall,
@@ -141,8 +145,22 @@ fun UpdateAvailableDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText(
+                                title, ReleaseNoteLinks.copyMessage(title, result.releaseNotes.orEmpty(), downloadLabel),
+                            ))
+                        }.onSuccess { context.toastSuccess(R.string.update_notes_copied) }
+                            .onFailure { context.toastError(R.string.update_notes_copy_failed) }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(stringResource(R.string.update_copy_notes)) }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(android.R.string.cancel))
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

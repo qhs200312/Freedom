@@ -133,9 +133,8 @@ internal fun IpQualityPanel(
                         color = gradeColor(exitQuality!!.level),
                         style = MaterialTheme.typography.labelMedium,
                     )
-                    val type = stringResource(exitQuality!!.type.label())
                     Text(
-                        if (exitQuality!!.inferred) stringResource(R.string.ip_quality_inferred_value, type) else type,
+                        typeText(exitQuality!!),
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -210,6 +209,9 @@ private fun IpQualityResult(quality: IpQuality, hidden: Boolean) {
     Text(if (hidden) "*****" else quality.ip, style = MaterialTheme.typography.titleMedium)
     IpQualityClassification(quality)
     if (quality.inferred) Text(stringResource(R.string.ip_quality_inferred), style = MaterialTheme.typography.bodySmall)
+    if (quality.typeNeedsConfirmation) Text(
+        stringResource(R.string.ip_quality_confirmation_note), style = MaterialTheme.typography.bodySmall,
+    )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(
             quality.isProxy to R.string.ip_quality_proxy, quality.isVpn to R.string.ip_quality_vpn,
@@ -227,12 +229,11 @@ private fun IpQualityResult(quality: IpQuality, hidden: Boolean) {
 
 @Composable
 private fun IpQualityClassification(quality: IpQuality) {
-    val type = stringResource(quality.type.label())
     val level = stringResource(quality.level.label())
     Text(
         stringResource(
             R.string.ip_quality_type,
-            if (quality.inferred) stringResource(R.string.ip_quality_inferred_value, type) else type,
+            typeText(quality),
         ),
         color = MaterialTheme.colorScheme.onSurface,
     )
@@ -243,6 +244,16 @@ private fun IpQualityClassification(quality: IpQuality) {
         ),
         color = gradeColor(quality.level),
     )
+}
+
+@Composable
+private fun typeText(quality: IpQuality): String {
+    val type = stringResource(quality.type.label())
+    return when {
+        quality.typeNeedsConfirmation -> stringResource(R.string.ip_quality_unconfirmed_value, type)
+        quality.inferred -> stringResource(R.string.ip_quality_inferred_value, type)
+        else -> type
+    }
 }
 
 @Composable

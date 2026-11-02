@@ -82,6 +82,8 @@ object AppConfig {
     const val PREF_IP_API_URL = "pref_ip_api_url"
     const val PREF_LOGLEVEL = "pref_core_loglevel"
     const val PREF_HY2_DEFAULT_CORE = "pref_hy2_default_core"
+    const val PREF_ROUTING_NODE_CORES = "pref_routing_node_cores"
+    const val DEFAULT_ROUTING_NODE_CORES = true
     const val PREF_PROTOCOL_DEFAULT_CORE_PREFIX = "pref_protocol_default_core_"
     const val PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD = "pref_outbound_domain_resolve_method"
     const val PREF_MODE = "pref_mode"

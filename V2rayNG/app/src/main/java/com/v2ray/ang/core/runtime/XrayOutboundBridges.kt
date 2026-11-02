@@ -10,20 +10,30 @@ internal class XrayOutboundBridges(
     context: Context,
     protectSocket: ((Int) -> Boolean)? = null,
     onUnexpectedExit: () -> Unit = {},
+    honorCorePreferences: Boolean = false,
 ) : Closeable {
     private val nowhere = NowhereBridges(context, onUnexpectedExit)
     private val anytls = if (protectSocket == null) {
         AnyTlsBridges(context, onUnexpectedExit = onUnexpectedExit)
     } else AnyTlsBridges(context, protectSocket, onUnexpectedExit)
-    val isAlive: Boolean get() = nowhere.isAlive && anytls.isAlive
+    private val routing = if (honorCorePreferences) RoutingCoreBridges(
+        context, com.v2ray.ang.core.RuntimeCore.XRAY,
+        requireNotNull(protectSocket), onUnexpectedExit,
+    ) else null
+    val isAlive: Boolean get() = nowhere.isAlive && anytls.isAlive && routing?.isAlive != false
 
-    fun prepare(profile: ProfileItem): ProfileItem = anytls.prepare(nowhere.prepare(profile))
+    fun prepare(profile: ProfileItem): ProfileItem {
+        val selected = routing?.prepare(profile) ?: profile
+        return anytls.prepare(nowhere.prepare(selected))
+    }
+
+    fun start() { routing?.start() }
 
     override fun close() {
         try {
-            anytls.close()
+            routing?.close()
         } finally {
-            nowhere.close()
+            try { anytls.close() } finally { nowhere.close() }
         }
     }
 }

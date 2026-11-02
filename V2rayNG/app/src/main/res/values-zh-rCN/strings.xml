@@ -166,6 +166,9 @@
     <string name="title_settings">设置</string>
     <string name="title_advanced">进阶设置</string>
     <string name="title_core_settings">核心设置</string>
+    <string name="title_pref_routing_node_cores">按分流节点选择核心</string>
+    <string name="summary_pref_routing_node_cores_on">双核心模式：遵循各节点的核心设置，仅在需要时启动第二个核心。返回首页后重新连接生效。</string>
+    <string name="summary_pref_routing_node_cores_off">单核心优先：分流节点尽量共用主核心，特殊协议仍保留必要的辅助组件。返回首页后重新连接生效。</string>
     <string name="title_pref_protocol_default_core">%1$s 默认内核</string>
     <string name="core_preference_auto">自动识别 / 跟随协议默认</string>
     <string name="core_anytls_fixed">sing-box（固定；Xray 通过 sing-box 桥接）</string>

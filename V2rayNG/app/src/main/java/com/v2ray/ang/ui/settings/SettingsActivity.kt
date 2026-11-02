@@ -236,6 +236,9 @@ fun SettingsScreen(
     var domesticDns by rememberMmkvString(AppConfig.PREF_DOMESTIC_DNS, "")
     var dnsHosts by rememberMmkvString(AppConfig.PREF_DNS_HOSTS, "")
     var coreLogLevel by rememberMmkvString(AppConfig.PREF_LOGLEVEL, "warning")
+    var routingNodeCores by rememberMmkvBool(
+        AppConfig.PREF_ROUTING_NODE_CORES, AppConfig.DEFAULT_ROUTING_NODE_CORES,
+    )
     var vmessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VMESS) ?: "", "XRAY")
     var vlessDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.VLESS) ?: "", "XRAY")
     var trojanDefaultCore by rememberMmkvString(CoreSelector.preferenceKey(EConfigType.TROJAN) ?: "", "XRAY")
@@ -458,6 +461,14 @@ fun SettingsScreen(
                 onExpandedChange = { coreSettingsExpanded = it }
             )
             if (coreSettingsExpanded) {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_routing_node_cores),
+                    summary = stringResource(if (routingNodeCores)
+                        R.string.summary_pref_routing_node_cores_on
+                    else R.string.summary_pref_routing_node_cores_off),
+                    checked = routingNodeCores,
+                    onCheckedChange = { routingNodeCores = it },
+                )
                 SettingsListItem(
                     title = stringResource(R.string.title_pref_protocol_default_core, "VMess"),
                     entries = coreEntries,

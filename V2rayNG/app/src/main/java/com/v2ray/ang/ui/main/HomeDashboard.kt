@@ -688,6 +688,7 @@ private fun ExitIpCard(
     onAction: (MainAction) -> Unit,
     repositoryOverride: IpQualityRepository? = null,
 ) {
+    val routingHealth = com.v2ray.ang.routinghealth.rememberRoutingHealth()
     val hideIp by IpQualityPlatform.hidden.collectAsStateWithLifecycle()
     val location = uiState.geoLocation
     val unavailable = stringResource(R.string.home_location_unavailable)
@@ -760,6 +761,9 @@ private fun ExitIpCard(
                     }
                 }
             }
+        }
+        if (uiState.isRunning && !uiState.exitIpFailed) {
+            com.v2ray.ang.routinghealth.RoutingHealthWarning(routingHealth)
         }
         HorizontalDivider(
             modifier = Modifier.padding(vertical = 12.dp),

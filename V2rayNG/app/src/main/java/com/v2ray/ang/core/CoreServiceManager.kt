@@ -26,6 +26,8 @@ import com.v2ray.ang.util.Utils
 import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.firstReachable
+import com.v2ray.ang.routinghealth.RoutingHealthMonitor
+import com.v2ray.ang.routinghealth.MSG_ROUTING_HEALTH_REQUEST
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,9 @@ object CoreServiceManager {
     fun markDataPathReady(service: Service): Boolean {
         val ticket = session.token
         if ((session.runtime as? ServiceRuntime)?.service !== service) return false
-        return session.markReady(ticket)
+        return session.markReady(ticket).also { ready ->
+            if (ready) (session.runtime as? ServiceRuntime)?.health?.request()
+        }
     }
 
     fun startCoreLoop(
@@ -83,6 +87,7 @@ object CoreServiceManager {
             } ?: return false
             if (control.isStopRequested()) return false
             if (notifyStartSuccess && session.markReady(ticket)) {
+                (session.runtime as? ServiceRuntime)?.health?.request()
                 MessageHelper.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
             }
             true
@@ -213,6 +218,8 @@ object CoreServiceManager {
         val plan: CoreLaunchPlan,
     ) : CoreRuntime by backend {
         private var registered = false
+        var health: RoutingHealthMonitor? = null
+            private set
         private val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (session.runtime !== this@ServiceRuntime) return
@@ -232,6 +239,9 @@ object CoreServiceManager {
                         }
                     }
                     AppConfig.MSG_MEASURE_DELAY -> measureDelay()
+                    MSG_ROUTING_HEALTH_REQUEST -> if (isServiceReady()) {
+                        health?.request(intent.getStringExtra("content") == "refresh")
+                    }
                 }
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
@@ -247,8 +257,12 @@ object CoreServiceManager {
         }
 
         override fun start() {
-            RuntimeDiagnostics.core(service, "starting core=$type protocol=${plan.profile.configType}")
+            RuntimeDiagnostics.core(
+                service,
+                "starting core=$type protocol=${plan.profile.configType} routingMode=${if (plan.useNodeCores) "per-node" else "unified"}",
+            )
             backend.start()
+            health = RoutingHealthMonitor(service, backend.routingHealthEndpoints)
             if (control.isStopRequested()) throw CancellationException("Service stopped during core startup")
             ContextCompat.registerReceiver(
                 service, receiver,
@@ -267,6 +281,8 @@ object CoreServiceManager {
         }
 
         override fun stop() {
+            health?.close()
+            health = null
             TrafficStatsManager.stop(runCatching { backend.trafficStats() }.getOrDefault(emptyList()))
             NotificationManager.stopSpeedNotification()
             try {
@@ -283,10 +299,13 @@ object CoreServiceManager {
         }
 
         override fun restart(shouldContinue: () -> Boolean): Boolean {
+            health?.close()
+            health = null
             // Keep the foreground service/receiver alive while Xray replaces its connections.
             TrafficStatsManager.stop(runCatching { backend.trafficStats() }.getOrDefault(emptyList()))
             val restarted = backend.restart { shouldContinue() && !control.isStopRequested() }
             if (restarted && shouldContinue() && !control.isStopRequested()) {
+                health = RoutingHealthMonitor(service, backend.routingHealthEndpoints).also { it.request() }
                 TrafficStatsManager.start(service)
                 RuntimeDiagnostics.core(service, "runtime_restarted core=$type")
                 return true

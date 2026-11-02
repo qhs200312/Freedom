@@ -9,6 +9,9 @@ import okhttp3.Credentials
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.ResponseBody
+import com.v2ray.ang.subscription.SubscriptionBatchParser
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.IDN
@@ -174,7 +177,26 @@ object HttpUtil {
      * @throws IOException If an I/O error occurs.
      */
     @Throws(IOException::class)
-    fun getUrlContentWithUserAgent(request: UrlContentRequest): String {
+    fun getUrlContentWithUserAgent(request: UrlContentRequest): String = subscriptionResponse(request) { body ->
+        val output = ByteArrayOutputStream()
+        body.charStream().use { SubscriptionBatchParser.writeBounded(it, output) }
+        output.toString("UTF-8")
+    }
+
+    internal fun downloadSubscription(request: UrlContentRequest, file: File) {
+        try {
+            subscriptionResponse(request) { body ->
+                file.outputStream().use { output ->
+                    body.charStream().use { SubscriptionBatchParser.writeBounded(it, output) }
+                }
+            }
+        } catch (error: Exception) {
+            file.delete()
+            throw error
+        }
+    }
+
+    private fun <T> subscriptionResponse(request: UrlContentRequest, consume: (ResponseBody) -> T): T {
         var currentUrl = request.url
         var redirects = 0
         val maxRedirects = 3
@@ -238,7 +260,7 @@ object HttpUtil {
                     }
 
                     response.isSuccessful -> {
-                        return response.body?.string() ?: ""
+                        return consume(response.body ?: throw IOException("Empty subscription response"))
                     }
 
                     else -> {

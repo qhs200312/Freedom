@@ -1,0 +1,7 @@
+# Synthetic provider fixture using the MetaCubeX classical payload format.
+payload:
+    - DOMAIN-SUFFIX,facebook.com
+    - DOMAIN-SUFFIX,instagram.com
+    - DOMAIN-SUFFIX,whatsapp.com
+    - DOMAIN-SUFFIX,threads.net
+    - DOMAIN-SUFFIX,meta.com

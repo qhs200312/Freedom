@@ -17,13 +17,14 @@ val freedomSigningProperties = Properties().apply {
 android {
     namespace = "com.v2ray.ang"
     compileSdk = 37
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.v2ray.ang"
         minSdk = 24
         targetSdk = 37
-        versionCode = providers.gradleProperty("FREEDOM_VERSION_CODE").orElse("787").get().toInt()
-        versionName = providers.gradleProperty("FREEDOM_VERSION_NAME").orElse("2.8.5").get()
+        versionCode = providers.gradleProperty("FREEDOM_VERSION_CODE").orElse("788").get().toInt()
+        versionName = providers.gradleProperty("FREEDOM_VERSION_NAME").orElse("2.9.0").get()
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -86,6 +87,7 @@ android {
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("libs")
+            jniLibs.srcDir(layout.buildDirectory.dir("generated/rulesParser/jniLibs").get().asFile)
         }
     }
 
@@ -156,6 +158,50 @@ android {
         }
     }
 
+}
+
+val rulesParserRoot = rootProject.file("native/rules-parser")
+val rulesParserInputs = fileTree(rulesParserRoot) {
+    include("src/**", "Cargo.toml", "Cargo.lock", "build.ps1", "build.sh")
+}
+val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+val hostLibraryName = when {
+    isWindowsHost -> "freedom_rules.dll"
+    System.getProperty("os.name").startsWith("Mac", ignoreCase = true) -> "libfreedom_rules.dylib"
+    else -> "libfreedom_rules.so"
+}
+val buildHostRuleParser by tasks.registering(Exec::class) {
+    inputs.files(rulesParserInputs)
+    outputs.file(File(rulesParserRoot, "target/release/$hostLibraryName"))
+    environment("CARGO_TARGET_DIR", File(rulesParserRoot, "target").absolutePath)
+    commandLine("cargo", "build", "--manifest-path", File(rulesParserRoot, "Cargo.toml"),
+        "--release", "--locked")
+}
+val buildAndroidRuleParser by tasks.registering(Exec::class) {
+    val abis = providers.gradleProperty("ABI_FILTERS").orElse("arm64-v8a;armeabi-v7a;x86_64;x86")
+    inputs.files(rulesParserInputs)
+    inputs.property("abis", abis)
+    outputs.dir(layout.buildDirectory.dir("generated/rulesParser/jniLibs"))
+    environment("CARGO_TARGET_DIR", File(rulesParserRoot, "target").absolutePath)
+    val sdkProperties = Properties().apply {
+        rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+    }
+    val sdk = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+        ?: sdkProperties.getProperty("sdk.dir").orEmpty()
+    environment("FREEDOM_RULES_ABIS", abis.get())
+    environment("FREEDOM_RULES_NDK", File(sdk, "ndk/28.2.13676358").absolutePath)
+    environment("FREEDOM_RULES_OUTPUT", layout.buildDirectory.dir("generated/rulesParser/jniLibs").get().asFile.absolutePath)
+    if (isWindowsHost) {
+        commandLine("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            File(rulesParserRoot, "build.ps1"))
+    } else {
+        commandLine("bash", File(rulesParserRoot, "build.sh"))
+    }
+}
+tasks.named("preBuild").configure { dependsOn(buildAndroidRuleParser) }
+tasks.withType<Test>().configureEach {
+    dependsOn(buildHostRuleParser)
+    systemProperty("freedom.rules.library", File(rulesParserRoot, "target/release/$hostLibraryName").absolutePath)
 }
 
 dependencies {

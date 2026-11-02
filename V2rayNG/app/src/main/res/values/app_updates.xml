@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="update_copy_notes">Copy notes</string>
+    <string name="update_notes_copied">Update notes and download link copied</string>
+    <string name="update_notes_copy_failed">Unable to copy. You can select and copy the notes instead.</string>
+    <string name="update_manual_download_hint">If the installation screen does not open after downloading, use the link below to download and install manually.</string>
+    <string name="update_manual_download_browser">Manual download (open browser)</string>
     <string name="update_notification_channel">App updates</string>
     <string name="update_downloading_version">Downloading update %1$s</string>
     <string name="update_downloaded_version">Update %1$s downloaded</string>

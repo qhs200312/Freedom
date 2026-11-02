@@ -31,6 +31,9 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.QRCodeDecoder
 import com.v2ray.ang.util.Utils
 import java.net.URI
+import java.io.File
+import com.v2ray.ang.dto.VmessQRCode
+import com.v2ray.ang.subscription.SubscriptionBatchParser
 
 object AngConfigManager {
 
@@ -189,7 +192,7 @@ object AngConfigManager {
         append: Boolean,
         allowInsecureHttp: Boolean = false,
     ): BatchImportResult {
-        var count = parseBatchConfig(Utils.decode(server), subid, append)
+        var count = parseBatchConfig(server, subid, append, encoded = true)
         if (count <= 0) {
             count = parseBatchConfig(server, subid, append)
         }
@@ -246,27 +249,34 @@ object AngConfigManager {
      * @param append Whether to append the configurations.
      * @return The number of configurations parsed.
      */
-    private fun parseBatchConfig(servers: String?, subid: String, append: Boolean): Int {
+    private fun parseBatchConfig(servers: String?, subid: String, append: Boolean, encoded: Boolean = false): Int {
+        if (servers == null) return 0
+        return try {
+            SubscriptionBatchParser.withInput(servers) { parseBatchFile(it, subid, append, encoded) }
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "Failed to prepare subscription", e)
+            0
+        }
+    }
+
+    private fun parseBatchFile(file: File, subid: String, append: Boolean, encoded: Boolean): Int {
         try {
-            if (servers == null) {
-                return 0
-            }
             // Find the currently selected server that belongs to the same subscription before replacement.
             val removedSelected = getRemovedSelectedProfile(subid, append)
 
             val subItem = MmkvManager.decodeSubscription(subid)
+            val filter = subItem?.filter?.takeIf(String::isNotEmpty)?.let {
+                runCatching { Regex(it) }.getOrNull()
+            }
 
             // Parse all configs first (no I/O during parsing)
             val configs = mutableListOf<ProfileItem>()
-            servers.lines()
-                .distinct()
-                .reversed()
-                .forEach {
-                    val config = parseConfig(it, subid, subItem)
-                    if (config != null) {
-                        configs.add(config)
-                    }
+            SubscriptionBatchParser.forEach(file, encoded) { line, vmess ->
+                val config = parseConfig(line, subid, subItem, filter, vmess)
+                if (config != null) {
+                    configs.add(config)
                 }
+            }
 
             // Batch save all parsed configs (only one serverList read/write)
             if (configs.isNotEmpty()) {
@@ -310,19 +320,20 @@ object AngConfigManager {
 
         // Read serverList once
         val serverList = MmkvManager.decodeServerList(subid)
+        val keys = serverList.toHashSet()
+        val added = ArrayList<String>(configs.size)
 
         configs.forEach { config ->
             val key = Utils.getUuid()
             // Save profile directly without updating serverList
             MmkvManager.encodeProfileDirect(key, JsonUtil.toJson(config))
 
-            if (!serverList.contains(key)) {
-                serverList.add(0, key)
-            }
+            if (keys.add(key)) added.add(key)
             keyToProfile[key] = config
         }
 
         // Write serverList once
+        serverList.addAll(0, added.asReversed())
         MmkvManager.encodeServerList(serverList, subid)
         return keyToProfile
     }
@@ -499,14 +510,16 @@ object AngConfigManager {
     private fun parseConfig(
         str: String?,
         subid: String,
-        subItem: SubscriptionItem?
+        subItem: SubscriptionItem?,
+        filter: Regex?,
+        preparedVmess: VmessQRCode? = null,
     ): ProfileItem? {
         try {
             if (str == null || TextUtils.isEmpty(str)) {
                 return null
             }
 
-            val config = configFmtParsers.firstNotNullOfOrNull { (scheme, parser) ->
+            val config = preparedVmess?.let(VmessFmt::fromQRCode) ?: configFmtParsers.firstNotNullOfOrNull { (scheme, parser) ->
                 if (str.startsWith(scheme)) parser(str) else null
             }
 
@@ -516,8 +529,7 @@ object AngConfigManager {
 
             // Apply filter
             if (subItem?.filter.isNotNullEmpty() && config.remarks.isNotNullEmpty()) {
-                val matched = Regex(pattern = subItem?.filter.orEmpty())
-                    .containsMatchIn(input = config.remarks)
+                val matched = filter?.containsMatchIn(input = config.remarks) == true
                 if (!matched) return null
             }
 
@@ -590,59 +602,68 @@ object AngConfigManager {
             val proxyPassword = SettingsManager.getSocksPassword()
 
             val httpPort = SettingsManager.getHttpPort()
-            var configText = if (HttpUtil.isTcpPortOpen(AppConfig.LOOPBACK, httpPort)) {
-                try {
-                    HttpUtil.getUrlContentWithUserAgent(
-                        UrlContentRequest(
-                            url = url,
-                            userAgent = userAgent,
-                            allowInsecureHttp = it.subscription.allowInsecureUrl,
-                            requestHeaders = requestHeaders,
-                            timeout = 15000,
-                            httpPort = httpPort,
-                            proxyUsername = proxyUsername,
-                            proxyPassword = proxyPassword
+            val subscriptionFile = File.createTempFile(
+                "subscription-download-", ".txt", com.v2ray.ang.AngApplication.application.cacheDir,
+            )
+            try {
+                var downloaded = if (HttpUtil.isTcpPortOpen(AppConfig.LOOPBACK, httpPort)) {
+                    try {
+                        HttpUtil.downloadSubscription(
+                            UrlContentRequest(
+                                url = url,
+                                userAgent = userAgent,
+                                allowInsecureHttp = it.subscription.allowInsecureUrl,
+                                requestHeaders = requestHeaders,
+                                timeout = 15000,
+                                httpPort = httpPort,
+                                proxyUsername = proxyUsername,
+                                proxyPassword = proxyPassword
+                            ), subscriptionFile,
                         )
-                    )
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription through proxy failed", e)
-                    ""
+                        subscriptionFile.length() > 0
+                    } catch (e: Exception) {
+                        LogUtil.e(AppConfig.ANG_PACKAGE, "Update subscription through proxy failed", e)
+                        false
+                    }
+                } else {
+                    false
                 }
-            } else {
-                ""
-            }
-            if (configText.isEmpty()) {
-                configText = try {
-                    HttpUtil.getUrlContentWithUserAgent(
-                        UrlContentRequest(
-                            url = url,
-                            userAgent = userAgent,
-                            allowInsecureHttp = it.subscription.allowInsecureUrl,
-                            requestHeaders = requestHeaders
+                if (!downloaded) {
+                    downloaded = try {
+                        HttpUtil.downloadSubscription(
+                            UrlContentRequest(
+                                url = url,
+                                userAgent = userAgent,
+                                allowInsecureHttp = it.subscription.allowInsecureUrl,
+                                requestHeaders = requestHeaders
+                            ), subscriptionFile,
                         )
-                    )
-                } catch (e: Exception) {
-                    LogUtil.e(AppConfig.TAG, "Update subscription: Failed to get URL content with user agent", e)
-                    ""
+                        subscriptionFile.length() > 0
+                    } catch (e: Exception) {
+                        LogUtil.e(AppConfig.TAG, "Update subscription: Failed to get URL content with user agent", e)
+                        false
+                    }
                 }
-            }
-            if (configText.isEmpty()) {
-                return SubscriptionUpdateResult(failureCount = 1)
-            }
+                if (!downloaded) {
+                    return SubscriptionUpdateResult(failureCount = 1)
+                }
 
-            val count = parseConfigViaSub(configText, it.guid, false)
-            if (count > 0) {
-                it.subscription.lastUpdated = System.currentTimeMillis()
-                MmkvManager.encodeSubscription(it.guid, it.subscription)
-                LogUtil.i(AppConfig.TAG, "Subscription updated: ${it.subscription.remarks}, $count configs")
-                return SubscriptionUpdateResult(
-                    configCount = count,
-                    successCount = 1
-                )
-            } else {
-                // Got response but no valid configs parsed
-                return SubscriptionUpdateResult(failureCount = 1)
-            }
+                var count = parseBatchFile(subscriptionFile, it.guid, false, encoded = true)
+                if (count <= 0) count = parseBatchFile(subscriptionFile, it.guid, false, encoded = false)
+                if (count <= 0) count = parseCustomConfigServer(subscriptionFile.readText(), it.guid, false)
+                if (count > 0) {
+                    it.subscription.lastUpdated = System.currentTimeMillis()
+                    MmkvManager.encodeSubscription(it.guid, it.subscription)
+                    LogUtil.i(AppConfig.TAG, "Subscription updated: ${it.subscription.remarks}, $count configs")
+                    return SubscriptionUpdateResult(
+                        configCount = count,
+                        successCount = 1
+                    )
+                } else {
+                    // Got response but no valid configs parsed
+                    return SubscriptionUpdateResult(failureCount = 1)
+                }
+            } finally { subscriptionFile.delete() }
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to update config via subscription", e)
             return SubscriptionUpdateResult(failureCount = 1)
@@ -693,7 +714,7 @@ object AngConfigManager {
      * @return The number of configurations parsed.
      */
     private fun parseConfigViaSub(server: String?, subid: String, append: Boolean): Int {
-        var count = parseBatchConfig(Utils.decode(server), subid, append)
+        var count = parseBatchConfig(server, subid, append, encoded = true)
         if (count <= 0) {
             count = parseBatchConfig(server, subid, append)
         }

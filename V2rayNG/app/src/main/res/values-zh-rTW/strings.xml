@@ -168,6 +168,9 @@
     <string name="summary_battery_background_settings">將 Freedom 設為不限制背景活動，減少系統鎖屏凍結</string>
     <string name="toast_battery_settings_unavailable">無法開啟系統電池設定</string>
     <string name="title_core_settings">核心設定</string>
+    <string name="title_pref_routing_node_cores">依分流節點選擇核心</string>
+    <string name="summary_pref_routing_node_cores_on">雙核心模式：遵循各節點的核心設定，僅在需要時啟動第二個核心。返回首頁後重新連線生效。</string>
+    <string name="summary_pref_routing_node_cores_off">單核心優先：分流節點盡量共用主核心，特殊協定仍保留必要的輔助元件。返回首頁後重新連線生效。</string>
     <string name="title_vpn_settings">VPN 設定</string>
     <string name="title_location_privacy_settings">定位與隱私</string>
     <string name="title_pref_per_app_proxy">Proxy 個別應用程式</string>

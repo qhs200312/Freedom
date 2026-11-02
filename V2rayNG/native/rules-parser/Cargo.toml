@@ -1,0 +1,23 @@
+[package]
+name = "freedom-rules"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "freedom_rules"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "=0.22.1"
+idna = "=1.1.0"
+jni = { version = "=0.21.1", default-features = false }
+regex = { version = "=1.13.1", default-features = false, features = ["std", "perf", "unicode"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "unwind"

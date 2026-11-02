@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_yaml_import">导入 YAML 规则</string>
+    <string name="routing_yaml_description">支持 Clash classical 的 payload 规则列表。可粘贴 YAML、HTTPS 链接或选择本地文件，也支持 GitHub 文件页面链接。所有导入规则使用下方选择的分流目标。</string>
+    <string name="routing_yaml_input">YAML 内容或 HTTPS 链接</string>
+    <string name="routing_yaml_paste">粘贴</string>
+    <string name="routing_yaml_file">选择文件</string>
+    <string name="routing_yaml_selected_file">已选择文件：%1$s</string>
+    <string name="routing_yaml_default_name">YAML 分流规则</string>
+    <string name="routing_yaml_loading">正在处理规则…</string>
+    <string name="routing_yaml_preview">共 %1$d 条去重规则：域名 %2$d 条、IP %3$d 条、端口 %4$d 条、网络 %5$d 条。</string>
+    <string name="routing_yaml_priority">保留已有规则，导入规则优先于已有域名和 IP 规则。修改后请重新连接生效。</string>
+    <string name="routing_yaml_check">预览规则</string>
+    <string name="routing_yaml_confirm">确认导入</string>
+    <string name="routing_yaml_imported">已导入 %1$d 条规则，请重新连接生效。</string>
+    <string name="routing_yaml_error_format">第 %1$d 行附近格式错误。请使用 payload: 下逐行列出的规则，不支持完整 Clash 配置；文件须为 UTF-8 编码。</string>
+    <string name="routing_yaml_error_unsupported">第 %1$d 行（%2$s）无法转换。支持 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD、DOMAIN-REGEX、IP-CIDR、IP-CIDR6、DST-PORT、NETWORK；不支持额外的策略列或 no-resolve 标记。未导入任何规则。</string>
+    <string name="routing_yaml_error_value">第 %1$d 行（%2$s）的值无效，请检查域名、IP 网段、端口或网络类型。</string>
+    <string name="routing_yaml_error_empty">未找到可导入的规则。</string>
+    <string name="routing_yaml_error_size">规则超出安全限制，请拆分文件或清理已有规则：单文件最多 8 MiB、5 万条去重规则、单行 16 KiB、128 条正则、256 条端口规则；重复条目、转换后的内容及累计保存的规则也有限制。</string>
+    <string name="routing_yaml_error_url">请输入 HTTPS 规则链接，不支持链接中嵌入登录信息。</string>
+    <string name="routing_yaml_error_http">下载失败（HTTP %1$s），请检查规则链接后重试。</string>
+    <string name="routing_yaml_error_read">无法读取规则，请检查文件访问权限或网络连接后重试。</string>
+    <string name="routing_yaml_error_timeout">解析超出时间限制，请拆分规则文件后重试。</string>
+    <string name="routing_yaml_error_cancelled">已取消导入。</string>
+    <string name="routing_yaml_error_busy">上一次解析正在停止，请稍后重试。</string>
+    <string name="routing_yaml_error_paste">粘贴最多支持 64K 字符，更大的规则请通过文件或链接导入。</string>
+    <string name="routing_yaml_large_editor">规则内容较大，当前显示摘要。可以修改备注和分流目标；需要修改内容时，请删除此规则并重新导入更新后的文件。</string>
+</resources>

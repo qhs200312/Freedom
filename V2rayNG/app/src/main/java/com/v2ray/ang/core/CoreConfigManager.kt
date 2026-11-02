@@ -101,7 +101,11 @@ object CoreConfigManager {
                 outbound.resolvedProfiles.none { it.configType in setOf(EConfigType.NOWHERE, EConfigType.ANYTLS) }) {
                 "Nowhere and AnyTLS local bridges do not support proxy chains"
             }
-            outbound.copy(resolvedProfiles = outbound.resolvedProfiles.map(prepare))
+            val prepared = outbound.resolvedProfiles.map(prepare)
+            require(outbound.resolvedType != CoreResolvedType.PROXYCHAIN || prepared == outbound.resolvedProfiles) {
+                "Cross-core proxy chains are not supported; select one core for all chain nodes"
+            }
+            outbound.copy(resolvedProfiles = prepared)
         },
     )
 
@@ -172,7 +176,7 @@ object CoreConfigManager {
         v2rayConfig.log.loglevel = MmkvManager.decodeSettingsString(AppConfig.PREF_LOGLEVEL) ?: "warning"
         v2rayConfig.remarks = primaryResolvedOutbound.profile.remarks
 
-        configureInbounds(v2rayConfig)
+        configureInbounds(v2rayConfig, configContext.routingRules)
 
         if (v2rayConfig.outbounds.isNotEmpty()) {
             v2rayConfig.outbounds.removeAt(0)
@@ -495,7 +499,7 @@ object CoreConfigManager {
     /**
      * Configure inbound listeners and related runtime options.
      */
-    private fun configureInbounds(v2rayConfig: V2rayConfig) {
+    private fun configureInbounds(v2rayConfig: V2rayConfig, routingRules: List<com.v2ray.ang.dto.entities.RulesetItem>?) {
         val vpn = SettingsManager.isVpnMode()
         val forcedBySocksRoot = SettingsManager.isRootMode()
                 || MmkvManager.decodeSettingsBool(AppConfig.PREF_ROOT_LAN_SHARING)
@@ -534,7 +538,7 @@ object CoreConfigManager {
         inbound1.sniffing?.routeOnly =
             MmkvManager.decodeSettingsBool(AppConfig.PREF_ROUTE_ONLY_ENABLED, false) ||
                 (SettingsManager.canUseProcessRouting() &&
-                    MmkvManager.decodeRoutingRulesets().orEmpty().any { it.enabled && !it.process.isNullOrEmpty() })
+                    (routingRules ?: MmkvManager.decodeRoutingRulesets().orEmpty()).any { it.enabled && !it.process.isNullOrEmpty() })
         if (!sniffAllTlsAndHttp) {
             inbound1.sniffing?.destOverride?.clear()
         }
@@ -1175,7 +1179,7 @@ object CoreConfigManager {
         )?.let(v2rayConfig.routing.rules::add)
         googleMapsBlockRule(blockGoogleMaps)?.let(v2rayConfig.routing.rules::add)
 
-        val rulesetItems = RoutingTargets.orderedRules(MmkvManager.decodeRoutingRulesets().orEmpty())
+        val rulesetItems = RoutingTargets.orderedRules(configContext.routingRules ?: MmkvManager.decodeRoutingRulesets().orEmpty())
         rulesetItems.forEach { key ->
             appendRoutingUserRule(configContext, key, v2rayConfig, policyGroupBalancerTags)
         }
@@ -1238,7 +1242,7 @@ object CoreConfigManager {
             return
         }
 
-        val rule = JsonUtil.fromJson(JsonUtil.toJson(item), V2rayConfig.RoutingBean.RulesBean::class.java) ?: return
+        val rule = com.v2ray.ang.routing.RoutingRuleConversion.toXray(item)
         rule.outboundTag = RoutingTargets.tag(item)
 
         // Replace specific geoip rules with ext versions

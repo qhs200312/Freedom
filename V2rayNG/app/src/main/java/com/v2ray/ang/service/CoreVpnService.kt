@@ -48,6 +48,7 @@ class CoreVpnService : VpnService(), ServiceControl, SingBoxTunHost {
     private var startupJob: Job? = null
     @Volatile private var serviceReady = false
     @Volatile private var platformOwnsTun = false
+    @Volatile private var localCoreNeedsBypass = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!SecureStorage.ensureAvailable(this)) {
@@ -130,10 +131,14 @@ class CoreVpnService : VpnService(), ServiceControl, SingBoxTunHost {
     override fun openSingBoxTun(options: TunOptions): Int =
         establishTun { SingBoxVpnConfigurator.configure(it, options) }.fd
 
+    override fun excludeOwnTrafficForLocalCore() {
+        localCoreNeedsBypass = true
+    }
+
     private fun configurePerAppProxy(builder: Builder) {
         val selection = vpnAppSelection(
             self = BuildConfig.APPLICATION_ID,
-            nativeSingBox = platformOwnsTun,
+            nativeSingBox = platformOwnsTun && !localCoreNeedsBypass,
             perApp = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY),
             bypass = MmkvManager.decodeSettingsBool(AppConfig.PREF_BYPASS_APPS),
             apps = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET).orEmpty(),

@@ -33,6 +33,7 @@ internal class XrayRuntime(
     private val profile: ProfileItem,
     private val tun: ParcelFileDescriptor?,
     private val recover: () -> Unit,
+    private val useNodeCores: Boolean,
 ) : CoreRuntime {
     override val type = RuntimeCore.XRAY
     private var controller: CoreController? = null
@@ -41,6 +42,8 @@ internal class XrayRuntime(
     private var dialer: IDialerService? = null
     private var bridges: XrayOutboundBridges? = null
     private var trafficBindings = emptyMap<String, com.v2ray.ang.dto.NodeTrafficBinding>()
+    override var routingHealthEndpoints = emptyList<com.v2ray.ang.routinghealth.RoutingHealthEndpoint>()
+        private set
     @Volatile private var stopping = false
     override val isRunning: Boolean get() = controller?.isRunning == true && bridges?.isAlive != false
 
@@ -59,16 +62,23 @@ internal class XrayRuntime(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             core.registerProcessFinder(XrayProcessFinder(service))
         }
-        val bridges = XrayOutboundBridges(service, control::vpnProtect) {
-            if (!stopping) recover()
-        }.also { this.bridges = it }
+        val bridges = XrayOutboundBridges(
+            service, control::vpnProtect,
+            onUnexpectedExit = { if (!stopping) recover() },
+            honorCorePreferences = useNodeCores,
+        ).also { this.bridges = it }
         val config = CoreConfigManager.getV2rayConfig(service, guid, bridges::prepare)
         check(config.status) { config.errorMessage.ifBlank { "Invalid Xray configuration" } }
+        val healthConfig = if (profile.configType == com.v2ray.ang.enums.EConfigType.CUSTOM) {
+            com.v2ray.ang.routinghealth.RoutingHealthConfig(config.content, emptyList())
+        } else com.v2ray.ang.routinghealth.RoutingHealthConfig.prepare(config.content, type)
+        routingHealthEndpoints = healthConfig.endpoints
         trafficBindings = config.trafficBindings
         val dialerMode = BrowserDialerMode.from(profile.browserDialerMode)
         val dialerAddress = if (dialerMode != null) "127.0.0.1:${Utils.findRandomFreePort()}" else ""
         CoreNativeManager.reconcileBrowserDialer(dialerAddress)
-        core.startLoop(config.content, tun?.fd ?: 0)
+        bridges.start()
+        core.startLoop(healthConfig.content, tun?.fd ?: 0)
         check(bridges.isAlive) { "A local outbound bridge stopped during core startup" }
         dialer = when (dialerMode) {
             BrowserDialerMode.OKHTTP -> DialerNativeService()

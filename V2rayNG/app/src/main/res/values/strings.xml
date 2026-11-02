@@ -173,6 +173,9 @@
     <string name="title_settings">Settings</string>
     <string name="title_advanced">Advanced Settings</string>
     <string name="title_core_settings">Core Settings</string>
+    <string name="title_pref_routing_node_cores">Use each routing node’s core</string>
+    <string name="summary_pref_routing_node_cores_on">Per-node mode: follow each node’s core setting and start a second core only when needed. Reconnects on returning to Home.</string>
+    <string name="summary_pref_routing_node_cores_off">Single-core priority: routing nodes share the main core where supported. Protocol-required helpers remain available. Reconnects on returning to Home.</string>
     <string name="title_pref_protocol_default_core">%1$s default core</string>
     <string name="core_preference_auto">Automatic / follow protocol default</string>
     <string name="core_anytls_fixed">sing-box (fixed; Xray uses a sing-box bridge)</string>

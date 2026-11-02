@@ -47,8 +47,10 @@ class IpQualityScheduler(
                         when (outcome) {
                             is IpQualityOutcome.Failure -> failures[source] = outcome.status
                             is IpQualityOutcome.Success -> {
-                                if (!outcome.quality.inferred) return@waveScope outcome.quality
-                                if (fallback == null) fallback = outcome.quality
+                                val quality = outcome.quality
+                                if (!quality.inferred && !quality.typeNeedsConfirmation) return@waveScope quality
+                                // Retain a provisional declaration ahead of an inferred default.
+                                if (fallback == null || fallback!!.inferred && !quality.inferred) fallback = quality
                             }
                         }
                     }

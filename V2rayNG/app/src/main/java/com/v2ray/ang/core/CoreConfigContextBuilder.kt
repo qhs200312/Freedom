@@ -4,6 +4,7 @@ import android.content.Context
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.CoreConfigContext
 import com.v2ray.ang.dto.entities.ProfileItem
+import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.enums.BalancerStrategyType
 import com.v2ray.ang.enums.CoreResolvedType
 import com.v2ray.ang.enums.EConfigType
@@ -43,16 +44,18 @@ object CoreConfigContextBuilder {
         }
 
         // Step 2: Resolve all non-builtin routing outbound tags.
-        val routingResolvedOutbounds = resolveRoutingOutbounds()
+        val routingRules = MmkvManager.decodeRoutingRulesets().orEmpty()
+        val routingResolvedOutbounds = resolveRoutingOutbounds(routingRules)
         val resolvedOutbounds = listOf(primaryResolvedOutbound) + routingResolvedOutbounds
         val fallbackResolvedOutbounds = resolveFallbackOutbounds(resolvedOutbounds)
-        val routingDomainRules = collectRoutingDomainRulesForDns()
+        val routingDomainRules = collectRoutingDomainRulesForDns(routingRules)
 
         return CoreConfigContext(
             context = context,
             guid = guid,
             resolvedOutbounds = resolvedOutbounds + fallbackResolvedOutbounds,
             routingDomainRules = routingDomainRules,
+            routingRules = routingRules,
         )
     }
 
@@ -98,8 +101,9 @@ object CoreConfigContextBuilder {
      *
      * Invalid or empty targets are skipped and handled by fallback logic later.
      */
-    internal fun resolveRoutingOutbounds(): List<CoreConfigContext.ResolvedOutbound> {
-        val rulesetItems = MmkvManager.decodeRoutingRulesets() ?: return emptyList()
+    internal fun resolveRoutingOutbounds(
+        rulesetItems: List<RulesetItem> = MmkvManager.decodeRoutingRulesets().orEmpty(),
+    ): List<CoreConfigContext.ResolvedOutbound> {
         val resolvedOutbounds = mutableListOf<CoreConfigContext.ResolvedOutbound>()
         val processedTags = mutableSetOf<String>()
 
@@ -144,6 +148,8 @@ object CoreConfigContextBuilder {
     private fun resolvePolicyGroupProfiles(config: ProfileItem): List<ProfileItem> {
         try {
             val serverList = MmkvManager.decodeAllServerList()
+            val filter = config.policyGroupFilter
+            val regex = filter?.takeIf(String::isNotBlank)?.let { runCatching { Regex(it) }.getOrNull() }
             return serverList
                 .asSequence()
                 .mapNotNull { id -> MmkvManager.decodeServerConfig(id) }
@@ -156,15 +162,10 @@ object CoreConfigContextBuilder {
                     }
                 }
                 .filter { profile ->
-                    val filter = config.policyGroupFilter
                     if (filter.isNullOrBlank()) {
                         true
                     } else {
-                        try {
-                            Regex(filter).containsMatchIn(profile.remarks)
-                        } catch (_: Exception) {
-                            profile.remarks.contains(filter)
-                        }
+                        regex?.containsMatchIn(profile.remarks) ?: profile.remarks.contains(filter)
                     }
                 }
                 .filter { it.server.isNotNullEmpty() }
@@ -225,8 +226,7 @@ object CoreConfigContextBuilder {
      *
      * outbounds are normalized into three tags only: proxy / direct / block.
      */
-    private fun collectRoutingDomainRulesForDns(): List<CoreConfigContext.RoutingDomainRule> {
-        val rulesetItems = MmkvManager.decodeRoutingRulesets().orEmpty()
+    private fun collectRoutingDomainRulesForDns(rulesetItems: List<RulesetItem>): List<CoreConfigContext.RoutingDomainRule> {
         val result = mutableListOf<CoreConfigContext.RoutingDomainRule>()
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true)) {

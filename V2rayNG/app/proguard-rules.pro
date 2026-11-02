@@ -4,6 +4,9 @@
 -keep,allowoptimization class com.v2ray.ang.handler.VerifiedUpdateManager$Store { *; }
 -keep,allowoptimization class com.v2ray.ang.ipquality.IpQuality { *; }
 -keep,allowoptimization class com.v2ray.ang.ipquality.IpQualityCacheEntry { *; }
+-keep,allowoptimization class com.v2ray.ang.routinghealth.RoutingHealthSnapshot { *; }
+-keep,allowoptimization class com.v2ray.ang.routinghealth.RoutingHealthStatus { *; }
+-keepclassmembers enum com.v2ray.ang.routinghealth.RoutingHealthState { *; }
 -keepclassmembers enum com.v2ray.ang.** { <fields>; }
 -keepattributes Signature,RuntimeVisibleAnnotations,AnnotationDefault,InnerClasses,EnclosingMethod
 
@@ -14,6 +17,7 @@
 -keep class libv2ray.** { *; }
 -keep class com.tencent.mmkv.** { *; }
 -keep class com.v2ray.ang.service.TProxyService { *; }
+-keep class com.v2ray.ang.routing.RustRuleParser { *; }
 -keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }
 
 # Keep useful release crash traces while removing original source filenames.

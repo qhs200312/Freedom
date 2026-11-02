@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="routing_health_connection_failed">连接失败</string>
+    <string name="routing_health_title">分流节点状态</string>
+    <string name="routing_health_single_warning">%1$s分流不可用</string>
+    <string name="routing_health_many_warning">%1$d 个分流节点不可用</string>
+    <string name="routing_health_view">查看 ›</string>
+    <string name="routing_health_retry">重新检测</string>
+    <string name="routing_health_rules">关联规则：%1$s</string>
+    <string name="routing_health_unknown">未检测</string>
+    <string name="routing_health_checking">检测中…</string>
+    <string name="routing_health_retrying">不可用 · 正在复检…</string>
+    <string name="routing_health_healthy">正常</string>
+    <string name="routing_health_unavailable">不可用</string>
+    <string name="routing_health_missing">分流目标未加载</string>
+    <string name="routing_health_disconnected">未连接</string>
+    <string name="routing_health_explanation">通过运行中的分流线路检测 HTTPS，失败后更换地址复核。结果不代表所有网站或 UDP 均可用。连接后检测一次，页面可见时每分钟复检。</string>
+</resources>

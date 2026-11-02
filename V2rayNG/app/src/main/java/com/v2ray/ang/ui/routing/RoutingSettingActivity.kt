@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +49,7 @@ import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.RulesetItem
+import com.v2ray.ang.routing.RoutingRuleLimits
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
@@ -100,7 +103,14 @@ class RoutingSettingActivity : HelperBaseComponentActivity() {
             onImportPredefined = { index -> importPredefined(index) },
             onImportClipboard = { importFromClipboard() },
             onImportQRcode = { importQRcode() },
-            onExportClipboard = { export2Clipboard() }
+            onExportClipboard = { export2Clipboard() },
+            onImportYamlFile = {
+                launchFileChooser { uri -> if (uri != null) viewModel.loadYamlFile(uri) }
+            },
+            onPasteYaml = {
+                try { viewModel.updateYamlInput(Utils.getClipboard(this)) }
+                catch (_: Exception) { toastError(R.string.toast_failure) }
+            },
         )
     }
 
@@ -190,11 +200,15 @@ fun RoutingSettingScreen(
     onImportPredefined: (Int) -> Unit,
     onImportClipboard: () -> Unit,
     onImportQRcode: () -> Unit,
-    onExportClipboard: () -> Unit
+    onExportClipboard: () -> Unit,
+    onImportYamlFile: () -> Unit,
+    onPasteYaml: () -> Unit,
 ) {
     val rulesets by viewModel.rulesetsFlow.collectAsStateWithLifecycle()
+    val routingHealth = com.v2ray.ang.routinghealth.rememberRoutingHealth()
     val nodes by viewModel.nodesFlow.collectAsStateWithLifecycle()
     val defaultNode by viewModel.defaultNodeFlow.collectAsStateWithLifecycle()
+    val yamlImport by viewModel.yamlImport.collectAsStateWithLifecycle()
     val domainStrategy by domainStrategyState.collectAsState()
     var disableNonProxiedUdp by rememberMmkvBool(AppConfig.PREF_DISABLE_NON_PROXIED_UDP, false)
     var showMenu by remember { mutableStateOf(false) }
@@ -239,6 +253,10 @@ fun RoutingSettingScreen(
                                 text = { Text(stringResource(R.string.routing_add_apps)) },
                                 onClick = { showAddMenu = false; onAddRule(true) },
                             )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.routing_yaml_import)) },
+                                onClick = { showAddMenu = false; viewModel.openYamlImport() },
+                            )
                         }
                     }
                     Box {
@@ -256,6 +274,10 @@ fun RoutingSettingScreen(
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.routing_settings_import_predefined_rulesets)) },
                                 onClick = { showMenu = false; showPresetDialog = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.routing_yaml_import)) },
+                                onClick = { showMenu = false; viewModel.openYamlImport() },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.routing_settings_import_rulesets_from_clipboard)) },
@@ -328,6 +350,7 @@ fun RoutingSettingScreen(
                     ) {
                         RoutingRulesetItem(
                             ruleset = ruleset,
+                            health = routingHealth.firstOrNull { it.tag == com.v2ray.ang.core.RoutingTargets.tag(ruleset) },
                             nodes = nodes,
                             onEdit = { onEditRule(index) },
                             onEnabledChange = { checked ->
@@ -342,6 +365,20 @@ fun RoutingSettingScreen(
         }
     }
 
+
+    if (yamlImport.visible) {
+        RoutingYamlImportDialog(
+            state = yamlImport,
+            nodes = nodes,
+            onInputChange = viewModel::updateYamlInput,
+            onNameChange = viewModel::updateYamlName,
+            onPaste = onPasteYaml,
+            onPickFile = onImportYamlFile,
+            onPreview = viewModel::previewYaml,
+            onImport = viewModel::saveYamlImport,
+            onDismiss = viewModel::closeYamlImport,
+        )
+    }
 
     if (showPresetDialog) {
         SelectListDialog(
@@ -359,6 +396,7 @@ fun RoutingSettingScreen(
 @Composable
 private fun RoutingRulesetItem(
     ruleset: RulesetItem,
+    health: com.v2ray.ang.routinghealth.RoutingHealthStatus?,
     nodes: List<RoutingNodeOption>,
     onEdit: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
@@ -390,7 +428,7 @@ private fun RoutingRulesetItem(
                 }
             }
             val domainIpInfo = if (!ruleset.process.isNullOrEmpty()) appNames
-                else (ruleset.domain ?: ruleset.ip ?: ruleset.port)?.toString().orEmpty()
+                else (ruleset.domain ?: ruleset.ip)?.let(RoutingRuleLimits::summary) ?: ruleset.port.orEmpty()
             if (domainIpInfo.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -403,11 +441,17 @@ private fun RoutingRulesetItem(
             }
             if (ruleset.outboundTag.isNotEmpty() || !ruleset.outboundProfileId.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = routingTargetLabel(ruleset.outboundTag, ruleset.outboundProfileId, nodes),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colorConfigType
-                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = routingTargetLabel(ruleset.outboundTag, ruleset.outboundProfileId, nodes),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colorConfigType
+                    )
+                    if (ruleset.enabled && com.v2ray.ang.core.RoutingTargets.tag(ruleset) !in AppConfig.BUILTIN_OUTBOUND_TAGS) {
+                        com.v2ray.ang.routinghealth.RoutingHealthLabel(health)
+                    }
+                }
             }
         }
 

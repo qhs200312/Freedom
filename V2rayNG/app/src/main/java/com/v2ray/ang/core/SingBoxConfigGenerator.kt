@@ -11,6 +11,7 @@ import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
+import com.v2ray.ang.routing.DomainRuleCompiler
 import java.io.File
 import java.net.URI
 
@@ -20,11 +21,6 @@ object SingBoxConfigGenerator {
         "dns.google" to "8.8.8.8",
         "dns.alidns.com" to "223.5.5.5",
         "doh.pub" to "1.12.12.12",
-    )
-    private val googleDomains = listOf(
-        "google.com", "googleapis.com", "googleapis.cn", "gstatic.com",
-        "googleusercontent.com", "ggpht.com", "googlevideo.com", "youtube.com",
-        "youtu.be", "ytimg.com"
     )
     private val stunDomains = listOf(
         "full:stun.l.google.com",
@@ -39,12 +35,14 @@ object SingBoxConfigGenerator {
         ruleSetDir: String? = null,
         enableTun: Boolean = false,
         onTrafficBindings: (Map<String, com.v2ray.ang.dto.NodeTrafficBinding>) -> Unit = {},
+        prepareRoutingProfile: (com.v2ray.ang.dto.entities.ProfileItem) -> com.v2ray.ang.dto.entities.ProfileItem = { it },
     ): String {
         val vpnConfig = SettingsManager.getCurrentVpnInterfaceAddressConfig()
-        val routingRules = MmkvManager.decodeRoutingRulesets().orEmpty().filter {
+        val storedRoutingRules = MmkvManager.decodeRoutingRulesets().orEmpty()
+        val routingRules = storedRoutingRules.filter {
             it.process.isNullOrEmpty() || SettingsManager.canUseProcessRouting()
         }
-        val resolvedRouting = CoreConfigContextBuilder.resolveRoutingOutbounds()
+        val resolvedRouting = CoreConfigContextBuilder.resolveRoutingOutbounds(storedRoutingRules)
         require(unsupportedResolvedRoutingReason(resolvedRouting) == null) {
             "Routing requires Xray policy groups or proxy chains"
         }
@@ -57,7 +55,9 @@ object SingBoxConfigGenerator {
         socksUsername = SettingsManager.getSocksUsername(),
         socksPassword = SettingsManager.getSocksPassword(),
         routingRules = routingRules,
-        routingProfiles = resolvedRouting.associate { it.tag to NodeProfile.from(it.resolvedProfiles.single()) },
+        routingProfiles = resolvedRouting.associate {
+            it.tag to NodeProfile.from(prepareRoutingProfile(it.resolvedProfiles.single()))
+        },
         blockGoogleLocation = MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_LOCATION_ENDPOINTS, true),
         blockGoogleMaps = MmkvManager.decodeSettingsBool(AppConfig.PREF_BLOCK_GOOGLE_MAPS_SERVICES, true),
         strictBlockGoogleMapsSdk = MmkvManager.decodeSettingsBool(
@@ -90,18 +90,24 @@ object SingBoxConfigGenerator {
         )
     }
 
-    fun unsupportedRoutingReason(): String? {
-        val resolved = CoreConfigContextBuilder.resolveRoutingOutbounds()
-        return unsupportedResolvedRoutingReason(resolved) ?: unsupportedRoutingReason(
-            MmkvManager.decodeRoutingRulesets().orEmpty(),
-            resolved.associate { it.tag to NodeProfile.from(it.resolvedProfiles.single()) },
-        )
+    fun unsupportedRoutingReason(allowCoreBridges: Boolean = true): String? {
+        val rules = MmkvManager.decodeRoutingRulesets().orEmpty()
+        val resolved = CoreConfigContextBuilder.resolveRoutingOutbounds(rules)
+        return routingCompatibilityReason(rules, resolved, allowCoreBridges)
     }
 
+    internal fun routingCompatibilityReason(
+        rules: List<RulesetItem>,
+        resolved: List<CoreConfigContext.ResolvedOutbound>,
+        allowCoreBridges: Boolean,
+    ): String? = unsupportedResolvedRoutingReason(resolved) ?: unsupportedRoutingReason(
+        rules,
+        if (allowCoreBridges) emptyMap()
+        else resolved.associate { it.tag to NodeProfile.from(it.resolvedProfiles.single()) },
+    )
+
     private fun unsupportedResolvedRoutingReason(resolved: List<CoreConfigContext.ResolvedOutbound>): String? =
-        if (resolved.any { outbound -> outbound.resolvedProfiles.any { it.configType == com.v2ray.ang.enums.EConfigType.NOWHERE } }) {
-            "Nowhere routing uses the Xray local bridge"
-        } else if (resolved.any { it.resolvedType != CoreResolvedType.NORMAL || it.resolvedProfiles.size != 1 }) {
+        if (resolved.any { it.resolvedType != CoreResolvedType.NORMAL || it.resolvedProfiles.size != 1 }) {
             "sing-box cannot preserve Xray policy groups or proxy chains"
         } else null
 
@@ -156,6 +162,7 @@ object SingBoxConfigGenerator {
                 addProperty("password", socksPassword.orEmpty())
             }
         }
+        val domainCompiler = DomainRuleCompiler()
         val root = JsonObject().apply {
             cacheFilePath?.let { path ->
                 add("experimental", JsonObject().apply {
@@ -170,7 +177,7 @@ object SingBoxConfigGenerator {
             })
             val needsServerResolver = profiles.values.any { !Utils.isPureIpAddress(it.server) }
             if (localDnsEnabled || needsServerResolver) {
-                val dns = if (localDnsEnabled) buildDns(normalizedRules, remoteDnsServers, domesticDnsServers, false)
+                val dns = if (localDnsEnabled) buildDns(normalizedRules, remoteDnsServers, domesticDnsServers, false, domainCompiler)
                     else JsonObject().apply {
                         add("servers", JsonArray())
                         addProperty("final", "bootstrap-local")
@@ -247,6 +254,7 @@ object SingBoxConfigGenerator {
                 strictBlockGoogleMapsSdk,
                 localDnsEnabled,
                 ruleSetDir,
+                domainCompiler,
             ))
         }
         return JsonUtil.toJsonPretty(root) ?: root.toString()
@@ -485,6 +493,7 @@ object SingBoxConfigGenerator {
         remoteDnsServers: List<String>,
         domesticDnsServers: List<String>,
         @Suppress("UNUSED_PARAMETER") fakeDnsEnabled: Boolean,
+        compiler: DomainRuleCompiler,
     ): JsonObject {
         val remote = remoteDnsServers.ifEmpty { listOf(AppConfig.DNS_PROXY) }
         val domestic = domesticDnsServers.ifEmpty { listOf(AppConfig.DNS_DIRECT) }
@@ -515,7 +524,7 @@ object SingBoxConfigGenerator {
                 val domesticTag = domesticTags.first()
                 rules.asSequence()
                     .filter { it.enabled && it.process.isNullOrEmpty() && it.outboundTag == AppConfig.TAG_DIRECT }
-                    .mapNotNull { buildDnsDomainRule(it.domain.orEmpty(), domesticTag) }
+                    .mapNotNull { buildDnsDomainRule(it.domain.orEmpty(), domesticTag, compiler) }
                     .forEach(::add)
             })
             addProperty("final", remoteTags.first())
@@ -588,9 +597,9 @@ object SingBoxConfigGenerator {
         return host.isNotBlank() && !Utils.isPureIpAddress(host)
     }
 
-    private fun buildDnsDomainRule(domains: List<String>, server: String): JsonObject? {
+    private fun buildDnsDomainRule(domains: List<String>, server: String, compiler: DomainRuleCompiler): JsonObject? {
         val rule = JsonObject()
-        addDomainConditions(rule, domains)
+        compiler.addTo(rule, domains)
         if (rule.entrySet().isEmpty()) return null
         rule.addProperty("action", "route")
         rule.addProperty("server", server)
@@ -604,6 +613,7 @@ object SingBoxConfigGenerator {
         strictBlockGoogleMapsSdk: Boolean,
         localDnsEnabled: Boolean,
         ruleSetDir: String?,
+        compiler: DomainRuleCompiler,
     ): JsonObject {
         val outputRules = JsonArray()
         if (localDnsEnabled) {
@@ -627,19 +637,20 @@ object SingBoxConfigGenerator {
             add("sniffer", JsonArray().apply { add("stun") })
         })
         if (blockGoogleLocation) {
-            outputRules.add(domainRule(AppConfig.GEMINI_LIVE_DOMAINS, AppConfig.TAG_PROXY, "443"))
-            outputRules.add(domainRule(AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS, "block", "443"))
+            outputRules.add(domainRule(compiler, AppConfig.GEMINI_LIVE_DOMAINS, AppConfig.TAG_PROXY, "443"))
+            outputRules.add(domainRule(compiler, AppConfig.GOOGLE_LOCATION_ENDPOINT_DOMAINS, "block", "443"))
         }
         if (blockGoogleMaps) {
             outputRules.add(domainRule(
+                compiler,
                 AppConfig.GOOGLE_MAPS_SHARED_SDK_DOMAINS,
                 if (strictBlockGoogleMapsSdk) "block" else AppConfig.TAG_PROXY,
                 "443",
             ))
-            outputRules.add(domainRule(AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS, "block", "443"))
+            outputRules.add(domainRule(compiler, AppConfig.GOOGLE_MAPS_SERVICE_DOMAINS, "block", "443"))
         }
         rules.filter { it.enabled && !it.process.isNullOrEmpty() }
-            .forEach { convertRule(it)?.let(outputRules::add) }
+            .forEach { convertRule(it, compiler)?.let(outputRules::add) }
         outputRules.add(JsonObject().apply {
             addProperty("protocol", "stun")
             addProperty("action", "route")
@@ -649,7 +660,7 @@ object SingBoxConfigGenerator {
             domain = stunDomains,
             network = "udp",
             outboundTag = AppConfig.TAG_PROXY,
-        ))?.let(outputRules::add)
+        ), compiler)?.let(outputRules::add)
 
         var finalOutbound = "proxy"
         rules.filter { it.enabled && it.process.isNullOrEmpty() }.forEach { rule ->
@@ -659,7 +670,7 @@ object SingBoxConfigGenerator {
             if (isCatchAll) {
                 finalOutbound = rule.outboundTag.ifBlank { "proxy" }
             } else {
-                convertRule(rule)?.let(outputRules::add)
+                convertRule(rule, compiler)?.let(outputRules::add)
             }
         }
         return JsonObject().apply {
@@ -699,12 +710,12 @@ object SingBoxConfigGenerator {
         return result
     }
 
-    private fun domainRule(domains: List<String>, outbound: String, port: String? = null): JsonObject =
-        requireNotNull(convertRule(RulesetItem(domain = domains, outboundTag = outbound, port = port)))
+    private fun domainRule(compiler: DomainRuleCompiler, domains: List<String>, outbound: String, port: String? = null): JsonObject =
+        requireNotNull(convertRule(RulesetItem(domain = domains, outboundTag = outbound, port = port), compiler))
 
-    private fun convertRule(rule: RulesetItem): JsonObject? {
+    private fun convertRule(rule: RulesetItem, compiler: DomainRuleCompiler): JsonObject? {
         val result = JsonObject().apply {
-            addDomainConditions(this, rule.domain.orEmpty())
+            compiler.addTo(this, rule.domain.orEmpty())
             rule.process?.map(String::trim)?.filter(String::isNotEmpty)?.distinct()?.takeIf { it.isNotEmpty() }?.let {
                 add("package_name", JsonArray().apply { it.forEach(::add) })
                 add("inbound", JsonArray().apply { add("tun-in") })
@@ -738,30 +749,6 @@ object SingBoxConfigGenerator {
             result.addProperty("outbound", rule.outboundTag.ifBlank { AppConfig.TAG_PROXY })
         }
         return result
-    }
-
-    private fun addDomainConditions(target: JsonObject, domains: List<String>) = with(target) {
-        val exact = JsonArray()
-        val suffix = JsonArray()
-        val keyword = JsonArray()
-        val regex = JsonArray()
-        domains.forEach { value ->
-            when {
-                value.equals(AppConfig.GEOSITE_PRIVATE, true) ->
-                    listOf("lan", "local", "localdomain", "home.arpa").forEach(suffix::add)
-                value.startsWith("full:", true) -> exact.add(value.substringAfter(':'))
-                value.startsWith("keyword:", true) -> keyword.add(value.substringAfter(':'))
-                value.startsWith("regexp:", true) -> regex.add(value.substringAfter(':'))
-                value.startsWith("domain:", true) -> suffix.add(value.substringAfter(':'))
-                value.equals("geosite:google", true) -> googleDomains.forEach(suffix::add)
-                value.equals(AppConfig.GEOSITE_CN, true) -> addRuleSet("geosite-cn")
-                !value.startsWith("geosite:", true) -> suffix.add(value)
-            }
-        }
-        if (exact.size() > 0) add("domain", exact)
-        if (suffix.size() > 0) add("domain_suffix", suffix)
-        if (keyword.size() > 0) add("domain_keyword", keyword)
-        if (regex.size() > 0) add("domain_regex", regex)
     }
 
     private fun JsonObject.addRuleSet(tag: String) {

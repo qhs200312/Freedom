@@ -17,6 +17,7 @@ data class IpQuality(
     val isTor: Boolean = false,
     val isAbuser: Boolean = false,
     val inferred: Boolean = false,
+    val typeNeedsConfirmation: Boolean = false,
 ) {
     val level: IpQualityLevel get() = when {
         isTor || isAbuser -> IpQualityLevel.risky

@@ -9,7 +9,10 @@ data class IpQualityCacheEntry(
     val savedAt: Long,
     val quality: IpQuality? = null,
     val failures: Map<IpQualitySource, IpQualityFailure>? = null,
+    val classificationVersion: Int = CURRENT_CLASSIFICATION_VERSION,
 )
+
+const val CURRENT_CLASSIFICATION_VERSION = 2
 
 interface IpQualityStore {
     fun read(ip: String): IpQualityCacheEntry?
@@ -29,7 +32,9 @@ class IpQualityRepository(
             val cached = store.read(ip)
             val age = cached?.let { now() - it.savedAt } ?: -1L
             if (cached != null && age >= 0) {
-                if (!refresh && age < CACHE_MILLIS && cached.quality?.ip == ip) return@withLock cached.quality
+                if (!refresh && age < CACHE_MILLIS &&
+                    cached.classificationVersion == CURRENT_CLASSIFICATION_VERSION &&
+                    cached.quality?.ip == ip) return@withLock cached.quality
                 // Refresh bypasses successful cache entries, but never the quota-protecting failure cooldown.
                 if (age < COOLDOWN_MILLIS && cached.failures != null) {
                     throw IpQualityException(cached.failures, cached.savedAt + COOLDOWN_MILLIS)

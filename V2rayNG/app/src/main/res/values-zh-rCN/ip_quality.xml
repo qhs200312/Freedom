@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ip_quality_unconfirmed_value">%1$s（待核实）</string>
+    <string name="ip_quality_confirmation_note">ident.me 返回商业类型，但其他来源暂未能确认。家宽运营商网段也可能被该来源标为商业。</string>
     <string name="ip_quality_title">出口 IP 质量</string>
     <string name="ip_quality_custom">指定 IP 质量</string>
     <string name="ip_quality_hide">隐藏 IP 地址</string>

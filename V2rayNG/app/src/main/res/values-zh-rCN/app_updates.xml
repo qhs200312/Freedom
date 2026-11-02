@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="update_copy_notes">复制更新说明</string>
+    <string name="update_notes_copied">已复制更新说明和下载链接</string>
+    <string name="update_notes_copy_failed">复制失败，可长按正文选择复制。</string>
+    <string name="update_manual_download_hint">如下载后未弹出安装界面，请点击下方链接手动下载安装。</string>
+    <string name="update_manual_download_browser">手动下载（浏览器打开）</string>
     <string name="update_notification_channel">应用更新</string>
     <string name="update_downloading_version">正在下载更新 %1$s</string>
     <string name="update_downloaded_version">更新 %1$s 已下载</string>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="node_ip_quality_test">Test IP quality</string>
+    <string name="node_ip_quality_testing">Testing node IP quality…</string>
+    <string name="node_ip_quality_unknown">Quality unknown</string>
+    <string name="node_ip_quality_result">%1$s · %2$s</string>
+    <string name="node_ip_quality_residential">Residential</string>
+    <string name="node_ip_quality_hosting">Datacenter</string>
+    <string name="node_ip_quality_mobile">Mobile</string>
+    <string name="node_ip_quality_business">Business</string>
+</resources>

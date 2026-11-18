@@ -67,8 +67,9 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private var coreProcessBound = false
     private val coreProcessConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) = Unit
-        override fun onServiceDisconnected(name: ComponentName?) = Unit
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) { mainViewModel.refreshServiceState() }
+        override fun onServiceDisconnected(name: ComponentName?) { mainViewModel.refreshServiceState() }
+        override fun onBindingDied(name: ComponentName?) { mainViewModel.refreshServiceState() }
     }
 
     private val mainViewModel: MainViewModel by viewModels {
@@ -148,6 +149,7 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onResume()
         if (storageUnavailable) return
         mainViewModel.setDashboardVisible(true)
+        mainViewModel.refreshServiceState()
         mainViewModel.showDownloadedUpdateOnResume()
     }
 
@@ -236,7 +238,11 @@ class MainActivity : HelperBaseComponentActivity() {
 
     private fun handleFabAction() {
         val state = mainViewModel.uiState.value
-        if (state.isStarting) return
+        if (state.isStarting) {
+            LauncherManager.stopService(this)
+            mainViewModel.setServiceStarting(false)
+            return
+        }
         if (state.isRunning) {
             LauncherManager.stopService(this)
         } else if (!SettingsManager.isRootMode() && SettingsManager.isVpnMode()) {
@@ -289,7 +295,19 @@ class MainActivity : HelperBaseComponentActivity() {
         ) {
             checkAndRequestPermission(PermissionType.ACCESS_LOCAL_NETWORK) {}
         }
-        if (!LauncherManager.startService(this)) {
+        if (SettingsManager.isRootMode()) {
+            lifecycleScope.launch {
+                // su authorization can take seconds; never wait for it on the UI thread.
+                val available = RootManager.refresh()
+                if (!mainViewModel.uiState.value.isStarting) return@launch
+                if (!available) {
+                    toastError(R.string.toast_root_required)
+                    mainViewModel.setServiceStarting(false)
+                } else if (!LauncherManager.startService(this@MainActivity)) {
+                    mainViewModel.setServiceStarting(false)
+                }
+            }
+        } else if (!LauncherManager.startService(this)) {
             mainViewModel.setServiceStarting(false)
         }
     }

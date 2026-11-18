@@ -49,6 +49,20 @@ object CoreServiceManager {
     fun isRunning(): Boolean = session.isRunning &&
         (session.runtime as? ServiceRuntime)?.control?.isStopRequested() != true
     fun isServiceReady(): Boolean = session.isReady && isRunning()
+    fun isStarting(): Boolean = serviceControl?.get()?.let {
+        !it.isStopRequested() && (it.isStarting() || session.state == CoreSessionState.STARTING ||
+            session.state == CoreSessionState.RUNNING)
+    } == true
+
+    fun reportState(context: Context) {
+        val key = when {
+            isServiceReady() -> AppConfig.MSG_STATE_RUNNING
+            isStarting() -> AppConfig.MSG_STATE_STARTING
+            else -> AppConfig.MSG_STATE_NOT_RUNNING
+        }
+        if (key == AppConfig.MSG_STATE_RUNNING) NotificationManager.ensureForeground()
+        MessageHelper.sendMsg2UI(context, key, "")
+    }
     fun getRunningServerName(): String = (session.runtime as? ServiceRuntime)?.plan?.profile?.remarks.orEmpty()
 
     fun stopForStorageRecovery(onStopped: () -> Unit) {
@@ -107,7 +121,11 @@ object CoreServiceManager {
      * Invalidate recovery immediately; finish blocking native shutdown on a worker.
      * The service closes its TUN only after this callback.
      */
-    fun stopCoreLoop(serviceOverride: Service? = null, onStopped: () -> Unit = {}): Boolean {
+    fun stopCoreLoop(
+        serviceOverride: Service? = null,
+        onFinished: (() -> Unit)? = null,
+        onStopped: () -> Unit = {},
+    ): Boolean {
         val service = serviceOverride ?: serviceControl?.get()?.getService()
         val ticket = if (service != null) session.requestStop(service) else session.requestStop()
         scope.launch {
@@ -137,6 +155,7 @@ object CoreServiceManager {
                     } else emptyList()
                 }
                 completed.forEach { runCatching(it) }
+                onFinished?.let { runCatching(it) }
             }
         }
         return service != null
@@ -224,11 +243,7 @@ object CoreServiceManager {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (session.runtime !== this@ServiceRuntime) return
                 when (intent?.getIntExtra("key", 0)) {
-                    AppConfig.MSG_REGISTER_CLIENT -> MessageHelper.sendMsg2UI(
-                        service,
-                        if (isServiceReady()) AppConfig.MSG_STATE_RUNNING else AppConfig.MSG_STATE_NOT_RUNNING,
-                        "",
-                    )
+                    AppConfig.MSG_REGISTER_CLIENT -> reportState(service)
                     AppConfig.MSG_STATE_STOP -> control.stopService()
                     AppConfig.MSG_STATE_RESTART -> {
                         control.stopService()
@@ -250,6 +265,7 @@ object CoreServiceManager {
                     }
                     Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
                         backend.onScreenOn()
+                        if (isServiceReady()) NotificationManager.ensureForeground(service)
                         NotificationManager.startSpeedNotification()
                     }
                 }

@@ -285,7 +285,7 @@ private fun MapStatusPanel(
 
         Surface(
             onClick = { onAction(MainAction.ToggleService) },
-            enabled = !uiState.isStarting,
+            enabled = true,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .size(64.dp),

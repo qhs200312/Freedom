@@ -12,6 +12,8 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
 import com.v2ray.ang.handler.IcmpPing
+import com.v2ray.ang.ipquality.NodeIpQualityProbe
+import com.v2ray.ang.ipquality.NodeTestTask
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +34,7 @@ class RealPingWorkerService(
     private val guids: List<String>,
     private val onlyTcp: Boolean = false,
     private val pingOnly: Boolean = false,
+    private val ipQualityOnly: Boolean = false,
     private val onEvent: (RealPingEvent) -> Unit = {}
 ) {
     private val job = SupervisorJob()
@@ -41,6 +44,7 @@ class RealPingWorkerService(
 
     private val runningCount = AtomicInteger(0)
     private val totalCount = AtomicInteger(0)
+    private val qualityProbe by lazy { NodeIpQualityProbe(context) }
 
     fun start() {
         val jobs = guids.map { guid ->
@@ -48,20 +52,28 @@ class RealPingWorkerService(
             scope.launch {
                 runningCount.incrementAndGet()
                 try {
-                    val result = runInterruptible {
-                        if (pingOnly) {
-                            val config = MmkvManager.decodeServerConfig(guid)
-                            val ping = config?.server?.let(IcmpPing::measure) ?: -1L
-                            if (ping >= 0L) RealPingEvent.Result(guid, ping, "ping")
-                            else RealPingEvent.Result(guid, startRealPing(guid))
-                        } else if (onlyTcp) RealPingEvent.Result(guid, startTcping(guid), "tcp")
-                        else RealPingEvent.Result(guid, startRealPing(guid))
-                    }
+                    val result = NodeTestTask.run(
+                        guid, ipQualityOnly,
+                        measureDelay = {
+                            runInterruptible {
+                                if (pingOnly) {
+                                    val config = MmkvManager.decodeServerConfig(guid)
+                                    val ping = config?.server?.let(IcmpPing::measure) ?: -1L
+                                    if (ping >= 0L) RealPingEvent.Result(guid, ping, "ping")
+                                    else RealPingEvent.Result(guid, startRealPing(guid))
+                                } else if (onlyTcp) RealPingEvent.Result(guid, startTcping(guid), "tcp")
+                                else RealPingEvent.Result(guid, startRealPing(guid))
+                            }
+                        },
+                        lookupQuality = { qualityProbe.lookup(guid) },
+                    )
                     onEvent(result)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    onEvent(RealPingEvent.Result(guid, -1L))
+                    onEvent(if (ipQualityOnly) {
+                        RealPingEvent.QualityResult(guid, com.v2ray.ang.ipquality.NodeIpQualityResult())
+                    } else RealPingEvent.Result(guid, -1L))
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()

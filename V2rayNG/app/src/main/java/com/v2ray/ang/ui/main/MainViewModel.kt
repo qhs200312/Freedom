@@ -54,9 +54,11 @@ class MainViewModel(
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
     private val preloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
-    private val disconnectedText: String = dataSource.getString(R.string.connection_not_connected)
-    private val connectedText: String = dataSource.getString(R.string.connection_connected)
-    private val connectingText: String = dataSource.getString(R.string.connection_connecting)
+    private val disconnectedText: String get() = dataSource.getString(R.string.connection_not_connected)
+    private val connectedText: String get() = dataSource.getString(R.string.connection_connected)
+    private val connectingText: String get() = dataSource.getString(R.string.connection_connecting)
+    private var initialized = false
+    private var uiLocaleTag = SettingsManager.getLocale().toLanguageTag()
     private val initialSelectedGuid = dataSource.getSelectServer()
     private val initialSelectedProfile = initialSelectedGuid?.let(dataSource::decodeServerConfig)
 
@@ -186,9 +188,10 @@ class MainViewModel(
 
     private fun handleServiceEvent(event: MainServiceEvent) {
         when (event) {
+            MainServiceEvent.StateStarting -> setServiceStarting(true)
             MainServiceEvent.StateRunning -> updateRunningState(true, clearTestingText = false)
             MainServiceEvent.StateNotRunning -> {
-                if (!_uiState.value.isStarting) updateRunningState(false, clearTestingText = false)
+                updateRunningState(false, clearTestingText = false)
             }
             MainServiceEvent.StateStartSuccess -> {
                 toastSuccess(R.string.toast_services_success)
@@ -257,6 +260,7 @@ class MainViewModel(
             MainAction.RefreshExitLocation -> refreshIPLocation(_uiState.value.isRunning)
             MainAction.TestAllServers -> testAllRealPing(pingOnly = true)
             MainAction.TestRealAllServers -> testAllRealPing()
+            is MainAction.TestNodeIpQuality -> testNodeIpQuality(action.guid)
             MainAction.CancelTesting -> cancelAllPing()
             MainAction.RemoveAllServers -> removeAllServerAsync()
             MainAction.RemoveDuplicateServers -> removeDuplicateServerAsync()
@@ -308,6 +312,12 @@ class MainViewModel(
 
     // ---------- Initialization ----------
     fun initialize() {
+        if (initialized) {
+            refreshUiSettings()
+            setupGroupTab(forceRefresh = true)
+            return
+        }
+        initialized = true
         refreshIPLocation(useProxy = _uiState.value.isRunning)
         viewModelScope.launch(preloadDispatcher) {
             try {
@@ -325,11 +335,19 @@ class MainViewModel(
     }
 
     fun refreshUiSettings() {
+        val localeTag = SettingsManager.getLocale().toLanguageTag()
+        val languageChanged = localeTag != uiLocaleTag
+        uiLocaleTag = localeTag
         _uiState.update {
             it.copy(
                 proxyMode = SettingsManager.getProxyMode(),
                 confirmRemove = dataSource.getConfirmRemove(),
-                doubleColumnDisplay = dataSource.getDoubleColumnDisplay()
+                doubleColumnDisplay = dataSource.getDoubleColumnDisplay(),
+                statusText = if (!languageChanged || it.isTesting) it.statusText else when {
+                    it.isStarting -> connectingText
+                    it.isRunning -> connectedText
+                    else -> disconnectedText
+                },
             )
         }
     }
@@ -345,6 +363,10 @@ class MainViewModel(
                 },
             )
         }
+    }
+
+    fun refreshServiceState() {
+        dataSource.sendMsg2Service(AppConfig.MSG_REGISTER_CLIENT, "")
     }
 
     fun updateProxyMode(proxyMode: com.v2ray.ang.enums.ProxyMode, isCheckingRoot: Boolean = false) {
@@ -376,6 +398,7 @@ class MainViewModel(
                     dataSource.getString(R.string.node_test_unreachable)
                     else affiliation?.getTestDelayString().orEmpty(),
                 subscriptionRemarks = subscriptionRemarks,
+                ipQuality = affiliation?.ipQuality?.takeIf { it.isFresh(System.currentTimeMillis()) },
             )
         }
 
@@ -874,6 +897,25 @@ class MainViewModel(
                     serverGuids = if (keywordFilter.isNotEmpty()) servers.map { it.guid } else emptyList(),
                     onlyTcp = onlyTcp,
                     pingOnly = pingOnly,
+                )
+            )
+        }
+    }
+
+    private fun testNodeIpQuality(guid: String) {
+        if (_uiState.value.isTesting) return
+        val profile = dataSource.decodeServerConfig(guid) ?: return
+        if (profile.configType.isComplexType()) return
+        testingGroupId = uiState.value.selectedGroupId
+        _uiState.update {
+            it.copy(isTesting = true, statusText = dataSource.getString(R.string.node_ip_quality_testing))
+        }
+        viewModelScope.launch(ioDispatcher) {
+            dataSource.sendMsg2TestService(
+                TestServiceMessage(
+                    key = AppConfig.MSG_MEASURE_CONFIG_START,
+                    serverGuids = listOf(guid),
+                    ipQualityOnly = true,
                 )
             )
         }

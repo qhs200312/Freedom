@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="node_ip_quality_test">测试 IP 质量</string>
+    <string name="node_ip_quality_testing">正在测试节点 IP 质量…</string>
+    <string name="node_ip_quality_unknown">质量未知</string>
+    <string name="node_ip_quality_result">%1$s · %2$s</string>
+    <string name="node_ip_quality_residential">家宽</string>
+    <string name="node_ip_quality_hosting">机房</string>
+    <string name="node_ip_quality_mobile">移动网络</string>
+    <string name="node_ip_quality_business">商业</string>
+</resources>

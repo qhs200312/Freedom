@@ -69,13 +69,14 @@ class CoreTestService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        val message = intent?.serializable<TestServiceMessage>("content")
         NotificationHelper.startForeground(
             this,
             NotificationChannelType.CORE_TEST,
             getString(R.string.app_name),
-            getString(R.string.title_real_ping_all_server)
+            getString(if (message?.ipQualityOnly == true)
+                R.string.node_ip_quality_testing else R.string.title_real_ping_all_server)
         )
-        val message = intent?.serializable<TestServiceMessage>("content")
         if (message == null) {
             stopSelf(startId)
             return START_NOT_STICKY
@@ -107,6 +108,7 @@ class CoreTestService : Service() {
                 guids = guidsList,
                 onlyTcp = message.onlyTcp,
                 pingOnly = message.pingOnly,
+                ipQualityOnly = message.ipQualityOnly,
                 onEvent = { event -> handleWorkerEvent(event, message) { activeWorkers.remove(worker) } }
             )
             activeWorkers.add(worker)
@@ -134,8 +136,13 @@ class CoreTestService : Service() {
                 MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, event.guid)
             }
 
+            is RealPingEvent.QualityResult -> {
+                MmkvManager.encodeServerIpQuality(event.guid, event.quality)
+                MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, event.guid)
+            }
+
             is RealPingEvent.Finish -> {
-                if(message.subscriptionId.isNotEmpty()){
+                if (!message.ipQualityOnly && message.subscriptionId.isNotEmpty()) {
                     if (!message.pingOnly && MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_REMOVE_INVALID_AFTER_TEST, false)) {
                         AngConfigManager.removeInvalidServer(message.subscriptionId)
                     }

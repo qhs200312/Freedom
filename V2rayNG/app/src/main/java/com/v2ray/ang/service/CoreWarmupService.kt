@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 class CoreWarmupService : Service() {
     companion object {
         const val ACTION_RECOVERY_STOP = "storage_recovery_stop"
+        const val ACTION_QUERY_STATE = "query_runtime_state"
         const val EXTRA_TRANSACTION = "recovery_transaction"
         const val EXTRA_RECEIVER = "recovery_receiver"
     }
@@ -30,6 +31,11 @@ class CoreWarmupService : Service() {
 
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_QUERY_STATE) {
+            CoreServiceManager.reportState(this)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         if (intent?.action != ACTION_RECOVERY_STOP) {
             stopSelf(startId)
             return START_NOT_STICKY

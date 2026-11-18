@@ -41,6 +41,10 @@ internal object IpQualityPlatform {
     private val direct by lazy { repository(false) }
     private val proxy by lazy { repository(true) }
     fun repositoryFor(useProxy: Boolean) = if (useProxy) proxy else direct
+    fun repositoryForClient(client: OkHttpClient) = IpQualityRepository(
+        query = { ip -> IpQualityScheduler(OkHttpIpQualityTransport(client)).query(ip) },
+        store = store,
+    )
     private fun repository(useProxy: Boolean) = IpQualityRepository(
         query = { ip -> IpQualityScheduler(OkHttpIpQualityTransport.create(useProxy)).query(ip) },
         store = store,

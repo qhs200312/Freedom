@@ -12,6 +12,7 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.PackageUidResolver
 import com.v2ray.ang.util.Utils
 import java.io.File
+import java.util.UUID
 
 /**
  * Installs and removes the iptables / ip-rule routing that pushes system-wide traffic
@@ -36,8 +37,6 @@ object RootProxyManager {
     private const val MARK = AppConfig.ROOT_MARK_ROUTE
     private const val TPROXY_CHAIN = AppConfig.ROOT_TPROXY_CHAIN
     private const val TPROXY_DIVERT_CHAIN = AppConfig.ROOT_TPROXY_DIVERT_CHAIN
-    private const val WATCHDOG_HEALTHY_INTERVAL_SECONDS = 120
-    private const val WATCHDOG_RETRY_INTERVAL_SECONDS = 5
     private const val OOM_GUARD_INTERVAL_SECONDS = 60
 
     // Local / private / multicast destinations that must never be proxied.
@@ -52,6 +51,7 @@ object RootProxyManager {
         "::1/128", "fe80::/10", "fc00::/7", "ff00::/8"
     )
 
+    @Synchronized
     fun start(context: Context, cleanupBeforeStart: Boolean = true): Boolean {
         if (cleanupBeforeStart) teardown(context)
         val script = if (SettingsManager.isTProxyMode()) {
@@ -65,11 +65,6 @@ object RootProxyManager {
             teardown(context)
             return false
         }
-        if (!isDataPathReachable(context)) {
-            LogUtil.e(AppConfig.TAG, "RootProxyManager: data-path check failed, rolling back")
-            teardown(context)
-            return false
-        }
         startDataPathWatchdog(context)
         return true
     }
@@ -80,6 +75,7 @@ object RootProxyManager {
      * and forwards tethered clients into it, WITHOUT capturing the device's own traffic
      * (that keeps flowing through the VpnService). Requires root.
      */
+    @Synchronized
     fun startClientSharing(context: Context): Boolean {
         teardown(context)
         val script = buildTun2socksSetup(context, captureDeviceTraffic = false, forceLanShare = true)
@@ -95,6 +91,7 @@ object RootProxyManager {
     }
 
     /** Remove all rules and stop helper processes. Safe to call repeatedly. */
+    @Synchronized
     fun stop(context: Context) {
         teardown(context)
         LogUtil.i(AppConfig.TAG, "RootProxyManager: rules removed")
@@ -146,40 +143,19 @@ object RootProxyManager {
         val runDir = File(context.filesDir, AppConfig.ROOT_RUNTIME_DIR).apply { mkdirs() }
         val watchdogFile = File(runDir, "data_path_watchdog.sh")
         val watchdogPidFile = File(runDir, "watchdog.pid")
-        val teardownFile = File(runDir, "teardown_rules.sh")
         val corePid = Process.myPid()
-        val urls = listOf(
-            SettingsManager.getDelayTestUrl(),
-            SettingsManager.getDelayTestUrl(true),
-        ).distinct()
-        watchdogFile.writeText(buildString {
-            appendLine("sleep 15")
-            appendLine("command -v curl >/dev/null 2>&1 || exit 0")
-            appendLine("failures=0")
-            appendLine("while kill -0 $corePid 2>/dev/null; do")
-            appendLine("  healthy=0")
-            for (url in urls) {
-                val safeUrl = url.replace("'", "'\\''")
-                appendLine("  if [ \$healthy -eq 0 ] && curl -4 -fsS -o /dev/null --connect-timeout 6 --max-time 12 '$safeUrl'; then healthy=1; fi")
-            }
-            appendLine("  if [ \$healthy -eq 1 ]; then failures=0; sleep $WATCHDOG_HEALTHY_INTERVAL_SECONDS; continue; fi")
-            appendLine("  failures=\$((failures+1))")
-            appendLine("  if [ \$failures -lt 2 ]; then sleep $WATCHDOG_RETRY_INTERVAL_SECONDS; continue; fi")
-            // Remove capture before killing the core so the device never points at a dead listener.
-            appendLine("  rm -f '${watchdogPidFile.absolutePath}'")
-            appendLine("  sh '${teardownFile.absolutePath}' >/dev/null 2>&1")
-            appendLine("  kill $corePid 2>/dev/null || true")
-            appendLine("  exit 0")
-            appendLine("done")
-        })
+        val token = UUID.randomUUID().toString()
+        File(runDir, "session").writeText(token)
+        val helperPidFile = File(runDir, if (SettingsManager.isTProxyMode()) "tproxy.pid" else "tun2socks.pid")
+        watchdogFile.writeText(RootProcessScript.watchdog(corePid, token, runDir.absolutePath, helperPidFile.absolutePath))
         watchdogFile.setExecutable(true, false)
         val safePath = watchdogFile.absolutePath.replace("'", "'\\''")
         val safePidPath = watchdogPidFile.absolutePath.replace("'", "'\\''")
-        RootShell.runScript(
+        check(RootShell.runScript(
             context,
             "launch_data_path_watchdog.sh",
-            "nohup sh '$safePath' >/dev/null 2>&1 &\necho \$! > '$safePidPath'\nexit 0\n"
-        )
+            "nohup sh '$safePath' >/dev/null 2>&1 &\necho \$! > '$safePidPath'\nkill -0 \$!\n"
+        ).success) { "Root process watchdog failed to start" }
     }
 
     // ------------------------------------------------------------------ TPROXY
@@ -652,8 +628,9 @@ object RootProxyManager {
         val watchdogPidFile = File(runDir, "watchdog.pid").absolutePath
         val corePid = Process.myPid()
         return buildString {
-            appendLine("[ -f '$watchdogPidFile' ] && kill -KILL \$(cat '$watchdogPidFile') 2>/dev/null || true")
-            appendLine("rm -f '$watchdogPidFile'")
+            append(RootProcessScript.stopFunction)
+            appendLine("rm -f ${RootProcessScript.quote(File(runDir, "session").absolutePath)}")
+            appendLine("stop_recorded '$watchdogPidFile' '${File(runDir, "data_path_watchdog.sh").absolutePath}' KILL")
             // Some vendor iproute2 builds return success even when no matching rule remains.
             // Keep duplicate cleanup bounded so teardown can never spin until RootShell times out.
             appendLine("del_all() { n=0; while [ \"\$n\" -lt 16 ]; do \"\$@\" 2>/dev/null || break; n=\$((n+1)); done; }")
@@ -674,8 +651,9 @@ object RootProxyManager {
             appendLine("ip6tables -t filter -F ${AppConfig.ROOT_V6_CHAIN} 2>/dev/null || true")
             appendLine("ip6tables -t filter -X ${AppConfig.ROOT_V6_CHAIN} 2>/dev/null || true")
             // routing rule + table
-            appendLine("del_all ip rule del fwmark $MARK table $TABLE priority $PRIORITY")
-            appendLine("del_all ip -6 rule del fwmark $MARK table $TABLE priority $PRIORITY")
+            appendLine("del_pref() { pref=\"\$1\"; shift; n=0; while [ \"\$n\" -lt 16 ] && ip \"\$@\" rule list 2>/dev/null | grep -q \"^\$pref:\"; do ip \"\$@\" rule del pref \"\$pref\" 2>/dev/null || break; n=\$((n+1)); done; }")
+            appendLine("del_pref $PRIORITY")
+            appendLine("del_pref $PRIORITY -6")
             appendLine("ip route flush table $TABLE 2>/dev/null || true")
             appendLine("ip -6 route flush table $TABLE 2>/dev/null || true")
             // LAN / tethering sharing (always cleaned, harmless if it was never set up)
@@ -694,25 +672,18 @@ object RootProxyManager {
             appendLine("ip6tables -t mangle -F ${AppConfig.ROOT_V6_PRE_CHAIN} 2>/dev/null || true")
             appendLine("ip6tables -t mangle -X ${AppConfig.ROOT_V6_PRE_CHAIN} 2>/dev/null || true")
             for (pref in listOf(5000, 5010, 5020, 5025, 5026, 5027, 5030, 5040, 5050, 6000)) {
-                appendLine("del_all ip rule del pref $pref")
+                appendLine("del_pref $pref")
             }
             // tun device down + helper process
             appendLine("ip link set dev $TUN down 2>/dev/null || true")
-            appendLine("[ -f '$pidFile' ] && kill \$(cat '$pidFile') 2>/dev/null || true")
-            appendLine("rm -f '$pidFile'")
+            appendLine("stop_recorded '$pidFile' '${AppConfig.ROOT_TUN2SOCKS_BIN}' INT")
             // hev-socks5-tproxy handles SIGINT (not SIGTERM). Give it a short graceful
             // shutdown window, then force-stop only if the recorded process is still alive.
-            appendLine("if [ -f '$tproxyPidFile' ]; then")
-            appendLine("  TPROXY_PID=\$(cat '$tproxyPidFile')")
-            appendLine("  kill -INT \$TPROXY_PID 2>/dev/null || true")
-            appendLine("  i=0; while [ \$i -lt 10 ] && kill -0 \$TPROXY_PID 2>/dev/null; do sleep 0.1; i=\$((i+1)); done")
-            appendLine("  kill -KILL \$TPROXY_PID 2>/dev/null || true")
-            appendLine("fi")
-            appendLine("rm -f '$tproxyPidFile'")
+            appendLine("stop_recorded '$tproxyPidFile' '${AppConfig.ROOT_TPROXY_BIN}' INT")
             // stop the OOM re-pin loop and restore the core process's LMK priority
-            appendLine("[ -f '$oomGuardPid' ] && kill -KILL \$(cat '$oomGuardPid') 2>/dev/null || true")
-            appendLine("rm -f '$oomGuardPid'")
+            appendLine("stop_recorded '$oomGuardPid' 'oom_score_adj' KILL")
             appendLine("echo 0 > /proc/$corePid/oom_score_adj 2>/dev/null || true")
+            appendLine("exit 0")
         }
     }
 }

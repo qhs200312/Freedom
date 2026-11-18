@@ -3,6 +3,7 @@ package com.v2ray.ang.ui.main
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -50,6 +51,8 @@ import com.v2ray.ang.extension.toTrafficString
 import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.ipquality.NodeIpQualityLabel
+import com.v2ray.ang.ipquality.NodeIpQualityResult
 import com.v2ray.ang.ui.compose.ItemDivider
 import com.v2ray.ang.ui.compose.ReorderableGridItem
 import com.v2ray.ang.ui.compose.ReorderableListItem
@@ -250,6 +253,7 @@ private fun ServerItemRow(
         typeDescription = getProtocolDescription(profile),
         testResult = serverCache.testDelayString,
         testDelayMillis = serverCache.testDelayMillis,
+        ipQuality = serverCache.ipQuality,
         isSelected = serverCache.guid == selectedGuid,
         subscriptionRemarks = serverCache.subscriptionRemarks,
         doubleColumnDisplay = false,
@@ -282,6 +286,7 @@ private fun ServerItemColumn(
             typeDescription = getProtocolDescription(profile),
             testResult = serverCache.testDelayString,
             testDelayMillis = serverCache.testDelayMillis,
+            ipQuality = serverCache.ipQuality,
             isSelected = serverCache.guid == selectedGuid,
             subscriptionRemarks = serverCache.subscriptionRemarks,
             doubleColumnDisplay = doubleColumnDisplay,
@@ -313,6 +318,7 @@ fun ServerListItem(
     modifier: Modifier = Modifier,
     dragModifier: Modifier = Modifier,
     traffic: NodeTrafficTotal = NodeTrafficTotal(),
+    ipQuality: NodeIpQualityResult? = null,
 ) {
     Row(
         modifier = modifier
@@ -402,17 +408,28 @@ fun ServerListItem(
                 }
             }
             Spacer(Modifier.height(5.dp))
-            Text(
-                text = stringResource(R.string.node_traffic_used, traffic.total.toTrafficString()),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.node_traffic_used, traffic.total.toTrafficString()),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                ipQuality?.let {
+                    Spacer(Modifier.width(8.dp))
+                    NodeIpQualityLabel(it, Modifier.weight(1f, fill = false))
+                }
+            }
         }
     }
 }

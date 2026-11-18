@@ -257,7 +257,7 @@ private fun typeText(quality: IpQuality): String {
 }
 
 @Composable
-private fun gradeColor(level: IpQualityLevel): androidx.compose.ui.graphics.Color {
+internal fun gradeColor(level: IpQualityLevel): androidx.compose.ui.graphics.Color {
     val colors = MaterialTheme.colorScheme
     val semantic = when (level) {
         IpQualityLevel.good -> colors.tertiary

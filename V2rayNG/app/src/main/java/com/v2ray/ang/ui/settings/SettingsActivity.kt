@@ -36,6 +36,7 @@ import com.v2ray.ang.core.CoreSelector
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvBool
 import com.v2ray.ang.handler.MmkvManager.rememberMmkvString
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.root.RootManager
 import com.v2ray.ang.ui.base.BaseComponentActivity
@@ -65,6 +66,14 @@ class SettingsActivity : BaseComponentActivity() {
             onModeHelpClicked = { Utils.openUri(this, AppConfig.APP_WIKI_MODE) },
             onAutoStartPermissionClicked = ::openAutoStartSettings,
             onBatterySettingsClicked = ::openBatterySettings,
+            onLanguageSelected = { selected ->
+                selectLanguage(
+                    selected = selected,
+                    current = MmkvManager.decodeSettingsString(AppConfig.PREF_LANGUAGE, "auto") ?: "auto",
+                    persist = { MmkvManager.encodeSettings(AppConfig.PREF_LANGUAGE, it) },
+                    refresh = ::recreate,
+                )
+            },
         )
     }
 
@@ -158,6 +167,7 @@ fun SettingsScreen(
     onModeHelpClicked: () -> Unit,
     onAutoStartPermissionClicked: () -> Unit,
     onBatterySettingsClicked: () -> Unit,
+    onLanguageSelected: (String) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -209,7 +219,7 @@ fun SettingsScreen(
     var confirmRemove by rememberMmkvBool(AppConfig.PREF_CONFIRM_REMOVE, false)
     var doubleColumnDisplay by rememberMmkvBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
     var groupAllDisplay by rememberMmkvBool(AppConfig.PREF_GROUP_ALL_DISPLAY, false)
-    var language by rememberMmkvString(AppConfig.PREF_LANGUAGE, "auto")
+    val language = MmkvManager.decodeSettingsString(AppConfig.PREF_LANGUAGE, "auto") ?: "auto"
     var uiModeNight by rememberMmkvString(AppConfig.PREF_UI_MODE_NIGHT, "0")
 
     var ipv6Enabled by rememberMmkvBool(AppConfig.PREF_IPV6_ENABLED, false)
@@ -345,7 +355,7 @@ fun SettingsScreen(
                     entries = languageEntries,
                     values = languageValues,
                     selectedValue = language,
-                    onSelected = { language = it }
+                    onSelected = onLanguageSelected,
                 )
                 SettingsListItem(
                     title = stringResource(R.string.title_pref_ui_mode_night),

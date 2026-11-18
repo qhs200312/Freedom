@@ -21,7 +21,7 @@ class ReleaseHardeningInstrumentedTest {
     fun nativeBindingsAndPersistedModelFieldsSurviveR8() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         Seq.setContext(context)
-        assertTrue(Libv2ray.checkVersionX().contains("26.10.31"))
+        assertTrue(Libv2ray.checkVersionX().contains("26.11.9"))
         assertEquals("1.14.4", Libbox.version())
         val original = IpQualityCacheEntry(
             1000, IpQuality("203.0.113.8", IpQualitySource.ipApiIs, IpType.mobile, asn = "AS64500", isVpn = true),

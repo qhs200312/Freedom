@@ -4,7 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.os.LocaleList
+import android.content.res.Resources
 import android.provider.Settings
 import android.util.Base64
 import android.util.Patterns
@@ -391,7 +391,8 @@ object Utils {
      *
      * @return The system locale.
      */
-    fun getSysLocale(): Locale = LocaleList.getDefault().get(0) ?: Locale.getDefault()
+    fun getSysLocale(): Locale =
+        Resources.getSystem().configuration.locales.get(0) ?: Locale.getDefault()
 
     /**
      * Fix illegal characters in a URL.

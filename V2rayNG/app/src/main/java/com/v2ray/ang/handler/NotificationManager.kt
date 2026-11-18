@@ -93,9 +93,8 @@ object NotificationManager {
             .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle(currentConfig?.remarks ?: service.getString(R.string.app_name))
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            // Foreground-service lifetime is managed by Android. An OEM may detach its
-            // notification after killing the process; that leftover must be dismissible.
-            .setOngoing(false)
+            // Root routing needs a persistent foreground owner until asynchronous cleanup ends.
+            .setOngoing(SettingsManager.isRootMode())
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentPendingIntent)
@@ -165,7 +164,7 @@ object NotificationManager {
             .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle(service.getString(R.string.app_name))
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(false)
+            .setOngoing(SettingsManager.isRootMode())
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentPendingIntent)

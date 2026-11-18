@@ -5,6 +5,7 @@ import android.net.Network
 
 interface ServiceControl {
     fun isStopRequested(): Boolean = false
+    fun isStarting(): Boolean = false
     /**
      * Gets the service instance.
      * @return The service instance.

@@ -28,6 +28,7 @@ import com.v2ray.ang.handler.TrafficStatsManager
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
+import com.v2ray.ang.util.MyContextWrapper
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,6 +42,13 @@ class MainRepository(
 ) : MainDataSource {
 
     private val closed = AtomicBoolean(false)
+    @Volatile private var stringsContext: Context? = null
+
+    private fun localizedContext(): Context {
+        val locale = SettingsManager.getLocale()
+        return stringsContext?.takeIf { it.resources.configuration.locales.get(0) == locale }
+            ?: MyContextWrapper.wrap(app, locale).also { stringsContext = it }
+    }
 
     private val _mainServiceEvent = MutableSharedFlow<MainServiceEvent>(
         replay = 0,
@@ -63,6 +71,7 @@ class MainRepository(
 
             val event = when (key) {
                 AppConfig.MSG_STATE_RUNNING -> MainServiceEvent.StateRunning
+                AppConfig.MSG_STATE_STARTING -> MainServiceEvent.StateStarting
                 AppConfig.MSG_STATE_NOT_RUNNING -> MainServiceEvent.StateNotRunning
                 AppConfig.MSG_STATE_START_SUCCESS -> MainServiceEvent.StateStartSuccess
                 AppConfig.MSG_STATE_START_FAILURE -> MainServiceEvent.StateStartFailure(
@@ -108,7 +117,7 @@ class MainRepository(
         // this constructor can lose the initial running-state event on a cold UI launch.
         Handler(Looper.getMainLooper()).post {
             if (!closed.get()) {
-                MessageHelper.sendMsg2Service(app, AppConfig.MSG_REGISTER_CLIENT, "")
+                sendMsg2Service(AppConfig.MSG_REGISTER_CLIENT, "")
             }
         }
     }
@@ -147,9 +156,9 @@ class MainRepository(
     override fun isGroupAllDisplayEnabled(): Boolean =
         MmkvManager.decodeSettingsBool(AppConfig.PREF_GROUP_ALL_DISPLAY)
 
-    override fun getString(resId: Int): String = app.getString(resId)
+    override fun getString(resId: Int): String = localizedContext().getString(resId)
 
-    override fun getString(resId: Int, vararg formatArgs: Any): String = app.getString(resId, *formatArgs)
+    override fun getString(resId: Int, vararg formatArgs: Any): String = localizedContext().getString(resId, *formatArgs)
 
     override fun getSubscriptions(): List<SubscriptionCache> {
         val subscriptions = MmkvManager.decodeSubscriptions()
@@ -158,7 +167,7 @@ class MainRepository(
                 SubscriptionCache(
                     guid = "",
                     subscription = SubscriptionItem().apply {
-                        remarks = app.getString(R.string.filter_config_all)
+                        remarks = getString(R.string.filter_config_all)
                     }
                 )
             )
@@ -170,7 +179,7 @@ class MainRepository(
         MmkvManager.decodeSubscription(id)
 
     override fun ensureLocalSubscription() {
-        SettingsManager.ensureDefaultSubscription(app.getString(R.string.subscription_group_local))
+        SettingsManager.ensureDefaultSubscription(getString(R.string.subscription_group_local))
     }
 
     override fun getServerGuidList(groupId: String): List<String> =
@@ -234,8 +243,18 @@ class MainRepository(
     override fun share2Clipboard(guid: String): Boolean =
         AngConfigManager.share2Clipboard(app, guid) == 0
 
-    override fun sendMsg2Service(msgId: Int, content: String) =
-        MessageHelper.sendMsg2Service(app, msgId, content)
+    override fun sendMsg2Service(msgId: Int, content: String) {
+        if (msgId == AppConfig.MSG_REGISTER_CLIENT) {
+            try {
+                // This explicit service answers even when the native runtime receiver is gone.
+                app.startService(Intent(app, com.v2ray.ang.service.CoreWarmupService::class.java)
+                    .setAction(com.v2ray.ang.service.CoreWarmupService.ACTION_QUERY_STATE))
+            } catch (error: Exception) {
+                LogUtil.w(AppConfig.TAG, "Unable to query runtime service: ${error.javaClass.simpleName}")
+                MessageHelper.sendMsg2Service(app, msgId, content)
+            }
+        } else MessageHelper.sendMsg2Service(app, msgId, content)
+    }
 
     override fun sendMsg2TestService(msg: TestServiceMessage) =
         MessageHelper.sendMsg2TestService(app, msg)

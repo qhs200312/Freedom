@@ -6,4 +6,5 @@ data class ServersCache(
     val testDelayMillis: Long = 0L,
     val testDelayString: String = "",
     val subscriptionRemarks: String = "",
+    val ipQuality: com.v2ray.ang.ipquality.NodeIpQualityResult? = null,
 )

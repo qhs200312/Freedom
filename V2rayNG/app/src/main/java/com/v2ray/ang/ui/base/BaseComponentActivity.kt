@@ -14,12 +14,23 @@ import com.v2ray.ang.ui.compose.AppTheme
 import com.v2ray.ang.util.MyContextWrapper
 
 abstract class BaseComponentActivity : ComponentActivity() {
+    private var attachedLocaleTag: String? = null
 
     protected val storageUnavailable: Boolean
         get() = SecureStorage.isUnavailable
 
     override fun attachBaseContext(newBase: Context?) {
-        super.attachBaseContext(MyContextWrapper.wrap(newBase ?: return, SettingsManager.getLocale()))
+        val locale = SettingsManager.getLocale()
+        attachedLocaleTag = locale.toLanguageTag()
+        super.attachBaseContext(MyContextWrapper.wrap(newBase ?: return, locale))
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Refresh activities already in the back stack when a language is selected.
+        if (!storageUnavailable && attachedLocaleTag != SettingsManager.getLocale().toLanguageTag()) {
+            recreate()
+        }
     }
 
     final override fun onCreate(savedInstanceState: Bundle?) {

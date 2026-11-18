@@ -294,13 +294,28 @@ object MmkvManager {
      * @param guid The server GUID.
      * @param testResult The test delay in milliseconds.
      */
-    fun encodeServerTestDelayMillis(guid: String, testResult: Long, method: String = "connect") {
+    @Synchronized
+    fun encodeServerTestDelayMillis(
+        guid: String,
+        testResult: Long,
+        method: String = "connect",
+        ipQuality: com.v2ray.ang.ipquality.NodeIpQualityResult? = null,
+    ) {
         if (guid.isBlank()) {
             return
         }
         val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
         aff.testDelayMillis = testResult
         aff.testMethod = method
+        if (ipQuality != null) aff.ipQuality = ipQuality
+        serverAffStorage.encode(guid, JsonUtil.toJson(aff))
+    }
+
+    @Synchronized
+    fun encodeServerIpQuality(guid: String, quality: com.v2ray.ang.ipquality.NodeIpQualityResult) {
+        if (guid.isBlank() || decodeServerConfig(guid) == null) return
+        val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
+        aff.ipQuality = quality
         serverAffStorage.encode(guid, JsonUtil.toJson(aff))
     }
 

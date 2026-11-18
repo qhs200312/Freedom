@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.main
 
 sealed class MainServiceEvent {
     data object StateRunning : MainServiceEvent()
+    data object StateStarting : MainServiceEvent()
     data object StateNotRunning : MainServiceEvent()
     data object StateStartSuccess : MainServiceEvent()
     data class StateStartFailure(val errorMessage: String) : MainServiceEvent()

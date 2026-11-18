@@ -203,8 +203,12 @@ object CoreConfigManager {
         configureStunProxy(v2rayConfig, policyGroupBalancerTags[AppConfig.TAG_PROXY])
         configureFakeDns(v2rayConfig)
         configureDns(configContext, v2rayConfig, policyGroupBalancerTags)
-        configureLocalDns(configContext, v2rayConfig)
-        configureRootModeDns(v2rayConfig)
+        CoreDnsRouting.apply(
+            config = v2rayConfig,
+            rootMode = SettingsManager.isRootMode(),
+            nativeTun = needTun(),
+            localDnsEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true),
+        )
 
         // (added by getDns / getCustomLocalDns) to use the balancer, then add
         // the catch-all balancer rule.
@@ -645,71 +649,6 @@ object CoreConfigManager {
         }
 
         return domain
-    }
-
-    /**
-     * Configure local DNS inbounds, outbounds, and routing rules.
-     */
-    private fun configureLocalDns(configContext: CoreConfigContext, v2rayConfig: V2rayConfig) {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true) != true) {
-            return
-        }
-
-        if (SettingsManager.isVpnMode()) {
-            v2rayConfig.routing.rules.add(
-                0, V2rayConfig.RoutingBean.RulesBean(
-                    inboundTag = arrayListOf("tun"),
-                    outboundTag = "dns-out",
-                    port = "53",
-                )
-            )
-        }
-
-        // DNS outbound
-        if (v2rayConfig.outbounds.none { e -> e.protocol == "dns" && e.tag == "dns-out" }) {
-            v2rayConfig.outbounds.add(
-                V2rayConfig.OutboundBean(
-                    protocol = "dns",
-                    tag = "dns-out",
-                    settings = null,
-                    streamSettings = null,
-                    mux = null
-                )
-            )
-        }
-    }
-
-    /**
-     * In the root mode the whole device's traffic (incl. raw DNS) is funneled
-     * into the core's SOCKS inbound. Hijack port-53 to the
-     * core's DNS module so queries are resolved via the configured resolver through the
-     * proxy instead of leaking to (or being mis-resolved by) the local network resolver.
-     * Independent of the local-DNS toggle, which is not exposed for root mode.
-     */
-    private fun configureRootModeDns(v2rayConfig: V2rayConfig) {
-        if (!SettingsManager.isRootMode()) return
-
-        if (v2rayConfig.routing.rules.none { it.outboundTag == "dns-out" && it.port == "53" }) {
-            v2rayConfig.routing.rules.add(
-                0,
-                V2rayConfig.RoutingBean.RulesBean(
-                    inboundTag = arrayListOf("socks"),
-                    outboundTag = "dns-out",
-                    port = "53",
-                )
-            )
-        }
-        if (v2rayConfig.outbounds.none { it.protocol == "dns" && it.tag == "dns-out" }) {
-            v2rayConfig.outbounds.add(
-                V2rayConfig.OutboundBean(
-                    protocol = "dns",
-                    tag = "dns-out",
-                    settings = null,
-                    streamSettings = null,
-                    mux = null
-                )
-            )
-        }
     }
 
     private fun enableTrafficStats(config: JsonObject) {

@@ -64,9 +64,18 @@ object LauncherManager {
         MessageHelper.sendMsg2Service(context, AppConfig.MSG_STATE_STOP, "")
 
         val appContext = context.applicationContext
+        if (SettingsManager.isRootMode()) {
+            // Keep the foreground service alive until root rules and helpers are gone.
+            try {
+                ContextCompat.startForegroundService(appContext,
+                    Intent(appContext, CoreRootService::class.java).setAction(CoreRootService.ACTION_STOP))
+            } catch (error: Exception) {
+                LogUtil.w(AppConfig.TAG, "Unable to deliver root stop command: ${error.javaClass.simpleName}")
+                appContext.stopService(Intent(appContext, CoreRootService::class.java))
+            }
+        }
         listOf(
             CoreVpnService::class.java,
-            CoreRootService::class.java,
             CoreProxyOnlyService::class.java,
         ).forEach { serviceClass ->
             try {
@@ -81,7 +90,7 @@ object LauncherManager {
 
         // Also remove a stale notification immediately. The active service repeats this in
         // onDestroy(), covering both sides of the cross-process shutdown.
-        NotificationManager.cancelNotification()
+        if (!SettingsManager.isRootMode()) NotificationManager.cancelNotification()
     }
 
     @Throws(Exception::class)

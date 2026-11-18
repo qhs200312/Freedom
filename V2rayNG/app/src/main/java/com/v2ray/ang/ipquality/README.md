@@ -101,6 +101,13 @@ New verification files:
 
 ## Release hardening
 
+Node quality is queried explicitly from a node's More menu using "Test IP
+quality". Ordinary connection, ping and subscription tests never query it.
+Quality-only results update only the quality field, preserving stored latency.
+The foreground test service provides progress, cancellation and teardown;
+quality-only tests cannot trigger subscription auto-delete or auto-sort.
+The quality label remains beside used traffic and expires after three days.
+
 Release builds enable R8 and resource shrinking. Gson protocol/storage models
 and JNI/gomobile interfaces have explicit keep rules. Keep the generated
 `app/build/outputs/mapping/<variant>/mapping.txt` privately for crash retracing;

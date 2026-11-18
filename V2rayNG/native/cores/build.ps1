@@ -24,8 +24,8 @@ $tags = @(
 Push-Location (Join-Path $PSScriptRoot 'AndroidCoreBundle')
 try {
     $xrayVersion = (& $Go list -m -f '{{.Version}}' github.com/xtls/xray-core).Trim()
-    if ($LASTEXITCODE -ne 0 -or $xrayVersion -ne 'v1.260327.1-0.20261031132019-a4a3dff5b20c') {
-        throw 'The Xray module must match official v26.10.31'
+    if ($LASTEXITCODE -ne 0 -or $xrayVersion -ne 'v1.260327.1-0.20261109052709-676eaf66f8f0') {
+        throw 'The Xray module must match official v26.11.9'
     }
     $singBoxVersion = (& $Go list -m -f '{{.Version}}' github.com/sagernet/sing-box).Trim()
     if ($LASTEXITCODE -ne 0 -or $singBoxVersion -ne 'v1.14.4') {

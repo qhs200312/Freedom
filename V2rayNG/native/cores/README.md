@@ -7,14 +7,14 @@ Pinned core versions:
 
 | Core | Version | Official commit |
 | --- | --- | --- |
-| Xray-core | v26.10.31 | `a4a3dff5b20c2faae567b742c172c7b95e75c083` |
+| Xray-core | v26.11.9 | `676eaf66f8f05d4d558ee7a74b4736623d3feeb9` |
 | sing-box | v1.14.4 | `c005f35300ce76427dc285481ec5695f5b179cd2` |
 
 Xray's Go module uses
-`v1.260327.1-0.20261031132019-a4a3dff5b20c`, which resolves to the exact
-official release commit; the core itself reports `26.10.31`.
+`v1.260327.1-0.20261109052709-676eaf66f8f0`, which resolves to the exact
+official release commit; the core itself reports `26.11.9`.
 
-These are the official latest stable releases checked on November 1, 2026.
+These are the official latest stable releases checked on November 18, 2026.
 Release tags and full commit identities are verified before updating module
 locks. The build retains `multipathtcp=0` in Go runtime defaults.
 

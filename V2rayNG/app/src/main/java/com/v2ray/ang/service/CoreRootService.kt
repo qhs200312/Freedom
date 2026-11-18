@@ -4,50 +4,49 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.R
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.handler.NotificationManager
-import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SecureStorage
+import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.helper.MessageHelper
+import com.v2ray.ang.root.RootLifecycle
 import com.v2ray.ang.root.RootProxyManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MyContextWrapper
+import com.v2ray.ang.util.RuntimeDiagnostics
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.lang.ref.SoftReference
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Foreground service for the root (system-wide) run modes. Unlike [CoreVpnService] it
- * does not use Android VpnService — traffic is routed by iptables instead
- * (see [RootProxyManager]).
- *
- * The in-process core is started first (so its listener is up and the foreground
- * notification is posted promptly), then the root routing rules are installed off the
- * main thread. On teardown the rules are removed before the core stops.
- */
+/** A root route and its native core must be retired together before a replacement starts. */
 class CoreRootService : Service(), ServiceControl {
+    companion object {
+        const val ACTION_STOP = "com.v2ray.ang.action.ROOT_STOP"
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val lifecycle = RootLifecycle<CoreRootService>()
+    }
 
     private var setupJob: Job? = null
     private val stopping = AtomicBoolean(false)
     private val teardownStarted = AtomicBoolean(false)
+    private val restartRequested = AtomicBoolean(false)
     override fun isStopRequested(): Boolean = stopping.get()
+    override fun isStarting(): Boolean = !stopping.get() && setupJob?.isActive == true
 
     override fun onCreate() {
         super.onCreate()
-        if (!SecureStorage.ensureAvailable(this)) {
-            stopSelf()
-            return
-        }
-        LogUtil.i(AppConfig.TAG, "StartCore-Root: Service created")
-        CoreServiceManager.serviceControl = SoftReference(this)
+        if (!SecureStorage.ensureAvailable(this)) stopSelf()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -56,141 +55,110 @@ class CoreRootService : Service(), ServiceControl {
             return START_NOT_STICKY
         }
         NotificationManager.ensureForeground(this)
-        LogUtil.i(AppConfig.TAG, "StartCore-Root: command received")
-
-        // Foreground-service intents can be delivered twice (rapid taps, sticky restarts). A
-        // duplicate is not a core startup failure and must not tear down a healthy root tunnel.
-        if (stopping.get()) return START_NOT_STICKY
-        if (CoreServiceManager.isRunning() || setupJob?.isActive == true) {
-            LogUtil.i(AppConfig.TAG, "StartCore-Root: duplicate start ignored")
-            return START_STICKY
+        if (intent?.action == ACTION_STOP) {
+            restartRequested.set(false)
+            stopService()
+            return START_NOT_STICKY
         }
+        if (stopping.get()) {
+            restartRequested.set(true)
+            return START_NOT_STICKY
+        }
+        if (setupJob?.isActive == true) return START_NOT_STICKY
+        if (lifecycle.isOwner(this) && CoreServiceManager.isServiceReady()) return START_NOT_STICKY
 
-        // Start the in-process core first (this also posts the foreground notification),
-        // then install the root routing off the main thread.
-        setupJob = CoroutineScope(Dispatchers.IO).launch {
-            val startTime = SystemClock.elapsedRealtime()
-            // A killed root-service process or an APK update can leave its root helper and
-            // policy rules alive. Remove that stale data path before probing the new core;
-            // otherwise the probe period itself can leave the whole device offline.
-            RootProxyManager.stop(this@CoreRootService)
-            LogUtil.i(AppConfig.TAG, "StartCore-Root: cleanup ${SystemClock.elapsedRealtime() - startTime}ms")
-            if (stopping.get()) return@launch
-            SettingsManager.refreshRuntimeSocksPort()
-            try {
-                if (!CoreServiceManager.startCoreLoop(null, notifyStartSuccess = false)) {
-                    stopAfterBackgroundFailure()
-                    return@launch
+        setupJob = scope.launch {
+            lifecycle.start(this@CoreRootService, { stopping.get() }, { previous -> previous.shutdownOwned() }) {
+                val startTime = SystemClock.elapsedRealtime()
+                CoreServiceManager.serviceControl = SoftReference(this@CoreRootService)
+                try {
+                    RootProxyManager.stop(this@CoreRootService)
+                    checkActive()
+                    SettingsManager.refreshRuntimeSocksPort()
+                    check(CoreServiceManager.startCoreLoop(null, notifyStartSuccess = false)) {
+                        "Root core failed to start"
+                    }
+                    checkActive()
+                    // Public-site reachability is measured by the separate exit/route checks.
+                    check(RootProxyManager.start(this@CoreRootService, cleanupBeforeStart = false)) {
+                        "Root routing setup failed"
+                    }
+                    checkActive()
+                    check(CoreServiceManager.markDataPathReady(this@CoreRootService)) { "Root session was superseded" }
+                    NotificationManager.ensureForeground(this@CoreRootService)
+                    MessageHelper.sendMsg2UI(this@CoreRootService, AppConfig.MSG_STATE_START_SUCCESS, "")
+                    RuntimeDiagnostics.core(this@CoreRootService,
+                        "root_ready mode=${SettingsManager.getProxyMode()} elapsedMs=${SystemClock.elapsedRealtime() - startTime}")
+                } catch (error: Exception) {
+                    if (!stopping.get()) {
+                        LogUtil.e(AppConfig.TAG, "Root startup failed", error)
+                        MessageHelper.sendMsg2UI(this@CoreRootService, AppConfig.MSG_STATE_START_FAILURE,
+                            getString(R.string.toast_services_failure))
+                    }
+                    stopping.set(true)
+                    shutdownOwned()
+                    stopSelf()
                 }
-            } catch (error: Exception) {
-                LogUtil.e(AppConfig.TAG, "Root core startup failed", error)
-                stopAfterBackgroundFailure()
-                return@launch
-            }
-
-            var coreReady = false
-            for (attempt in 1..2) {
-                if (attempt > 1) delay(750L)
-                if (CoreServiceManager.isCoreReachable()) {
-                    coreReady = true
-                    break
-                }
-                LogUtil.w(AppConfig.TAG, "StartCore-Root: connectivity check $attempt failed")
-            }
-            LogUtil.i(AppConfig.TAG, "StartCore-Root: core checked ${SystemClock.elapsedRealtime() - startTime}ms")
-            if (!coreReady) {
-                LogUtil.e(AppConfig.TAG, "StartCore-Root: core has no working outbound, stopping")
-                MessageHelper.sendMsg2UI(
-                    this@CoreRootService,
-                    AppConfig.MSG_STATE_START_FAILURE,
-                    getString(com.v2ray.ang.R.string.toast_services_failure)
-                )
-                stopAfterBackgroundFailure()
-                return@launch
-            }
-
-            var started = false
-            for (attempt in 1..2) {
-                if (attempt > 1) delay(500L)
-                if (stopping.get()) return@launch
-                if (RootProxyManager.start(this@CoreRootService, cleanupBeforeStart = attempt > 1)) {
-                    started = true
-                    break
-                }
-                LogUtil.w(AppConfig.TAG, "StartCore-Root: root setup attempt $attempt failed")
-            }
-
-            if (started && !stopping.get() && CoreServiceManager.markDataPathReady(this@CoreRootService)) {
-                MessageHelper.sendMsg2UI(
-                    this@CoreRootService,
-                    AppConfig.MSG_STATE_START_SUCCESS,
-                    ""
-                )
-                LogUtil.i(AppConfig.TAG, "StartCore-Root: root mode ready in ${SystemClock.elapsedRealtime() - startTime}ms")
-
-            } else {
-                LogUtil.e(AppConfig.TAG, "StartCore-Root: failed to start root mode, stopping")
-                MessageHelper.sendMsg2UI(
-                    this@CoreRootService,
-                    AppConfig.MSG_STATE_START_FAILURE,
-                    getString(com.v2ray.ang.R.string.toast_services_failure)
-                )
-                stopAfterBackgroundFailure()
             }
         }
-
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
-    override fun onDestroy() {
-        stopService()
-        super.onDestroy()
+    private fun checkActive() {
+        check(!stopping.get()) { "Root service is stopping" }
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        if (isTransientShortcutTask(rootIntent)) {
-            LogUtil.i(AppConfig.TAG, "StartCore-Root: Ignoring shortcut task removal")
-            super.onTaskRemoved(rootIntent)
-            return
+    /** Called only under the process-wide lifecycle lock. */
+    private suspend fun shutdownOwned() {
+        stopping.set(true)
+        try {
+            RootProxyManager.stop(this)
+        } catch (error: Exception) {
+            LogUtil.e(AppConfig.TAG, "Root route cleanup failed", error)
+        } finally {
+            val completed = CompletableDeferred<Unit>()
+            CoreServiceManager.stopCoreLoop(this, onFinished = { completed.complete(Unit) })
+            completed.await()
         }
-        LogUtil.i(AppConfig.TAG, "StartCore-Root: App task removed, stopping service")
-        stopService()
-        super.onTaskRemoved(rootIntent)
-    }
-
-    /** Avoid waiting for the currently executing setup job from onDestroy(). */
-    private fun stopAfterBackgroundFailure() {
-        setupJob = null
-        stopService()
-    }
-
-    override fun getService(): Service = this
-
-    override fun startService() {
-        // do nothing
     }
 
     override fun stopService() {
         stopping.set(true)
         if (!teardownStarted.compareAndSet(false, true)) return
-        val setup = setupJob
-        setup?.cancel()
-        CoroutineScope(Dispatchers.IO).launch {
-            // Wait off the main thread, then remove redirection before closing the core.
-            setup?.cancelAndJoin()
-            RootProxyManager.stop(this@CoreRootService)
-            CoreServiceManager.stopCoreLoop(this@CoreRootService) { stopSelf() }
+        scope.launch {
+            // Finish a blocking root script before tearing down its installed route.
+            lifecycle.stop(this@CoreRootService, cleanupIfUnowned = CoreServiceManager.serviceControl?.get() == null) {
+                shutdownOwned()
+                NotificationManager.cancelNotification(this@CoreRootService)
+                MessageHelper.sendMsg2UI(this@CoreRootService, AppConfig.MSG_STATE_STOP_SUCCESS, "")
+            }
+            stopSelf()
         }
     }
 
-    override fun vpnProtect(socket: Int): Boolean = true
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun attachBaseContext(newBase: Context?) {
-        val context = newBase?.let {
-            MyContextWrapper.wrap(newBase, SettingsManager.getLocale())
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (!isTransientShortcutTask(rootIntent)) {
+            restartRequested.set(false)
+            stopService()
         }
-        super.attachBaseContext(context)
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        stopService()
+        super.onDestroy()
+        if (restartRequested.getAndSet(false)) {
+            Handler(Looper.getMainLooper()).post {
+                com.v2ray.ang.core.LauncherManager.startService(applicationContext)
+            }
+        }
+    }
+
+    override fun getService(): Service = this
+    override fun startService() = Unit
+    override fun vpnProtect(socket: Int): Boolean = true
+    override fun onBind(intent: Intent?): IBinder? = null
+    override fun attachBaseContext(newBase: Context?) {
+        super.attachBaseContext(newBase?.let { MyContextWrapper.wrap(it, SettingsManager.getLocale()) })
     }
 }

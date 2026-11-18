@@ -4,6 +4,7 @@
 -keep,allowoptimization class com.v2ray.ang.handler.VerifiedUpdateManager$Store { *; }
 -keep,allowoptimization class com.v2ray.ang.ipquality.IpQuality { *; }
 -keep,allowoptimization class com.v2ray.ang.ipquality.IpQualityCacheEntry { *; }
+-keep,allowoptimization class com.v2ray.ang.ipquality.NodeIpQualityResult { *; }
 -keep,allowoptimization class com.v2ray.ang.routinghealth.RoutingHealthSnapshot { *; }
 -keep,allowoptimization class com.v2ray.ang.routinghealth.RoutingHealthStatus { *; }
 -keepclassmembers enum com.v2ray.ang.routinghealth.RoutingHealthState { *; }

@@ -64,7 +64,10 @@ object SingBoxConfigGenerator {
             AppConfig.PREF_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
             AppConfig.DEFAULT_STRICT_BLOCK_GOOGLE_MAPS_SDK_ENDPOINTS,
         ),
-        localDnsEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true),
+        localDnsEnabled = CoreDnsRouting.requiresResolver(
+            SettingsManager.isRootMode(),
+            MmkvManager.decodeSettingsBool(AppConfig.PREF_LOCAL_DNS_ENABLED, true),
+        ),
         remoteDnsServers = SettingsManager.getRemoteDnsServers(),
         domesticDnsServers = SettingsManager.getDomesticDnsServers(),
         ruleSetDir = ruleSetDir,

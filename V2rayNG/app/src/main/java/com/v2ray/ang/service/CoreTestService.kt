@@ -109,6 +109,7 @@ class CoreTestService : Service() {
                 onlyTcp = message.onlyTcp,
                 pingOnly = message.pingOnly,
                 ipQualityOnly = message.ipQualityOnly,
+                checkIpQuality = message.checkIpQuality,
                 onEvent = { event -> handleWorkerEvent(event, message) { activeWorkers.remove(worker) } }
             )
             activeWorkers.add(worker)

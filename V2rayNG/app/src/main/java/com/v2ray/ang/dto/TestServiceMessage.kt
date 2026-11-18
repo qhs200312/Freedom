@@ -9,5 +9,6 @@ data class TestServiceMessage(
     val onlyTcp: Boolean = false,
     val pingOnly: Boolean = false,
     val ipQualityOnly: Boolean = false,
+    val checkIpQuality: Boolean = false,
 ) : Serializable
 

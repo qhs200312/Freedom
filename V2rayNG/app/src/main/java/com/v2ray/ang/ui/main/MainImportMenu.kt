@@ -129,8 +129,8 @@ fun MoreMenuContent(
         onClick = { onAction(MainAction.ExportAll) }
     )
     DropdownMenuItem(
-        text = { Text(stringResource(R.string.title_find_selected_profile)) },
-        onClick = { onAction(MainAction.LocateSelectedServer) }
+        text = { Text(stringResource(R.string.node_ip_quality_test)) },
+        onClick = { onAction(MainAction.TestAllIpQuality) }
     )
     DropdownMenuItem(
         text = { Text(stringResource(R.string.title_sort_by_test_results)) },

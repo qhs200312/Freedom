@@ -35,6 +35,7 @@ class RealPingWorkerService(
     private val onlyTcp: Boolean = false,
     private val pingOnly: Boolean = false,
     private val ipQualityOnly: Boolean = false,
+    private val checkIpQuality: Boolean = false,
     private val onEvent: (RealPingEvent) -> Unit = {}
 ) {
     private val job = SupervisorJob()
@@ -52,7 +53,7 @@ class RealPingWorkerService(
             scope.launch {
                 runningCount.incrementAndGet()
                 try {
-                    val result = NodeTestTask.run(
+                    NodeTestTask.run(
                         guid, ipQualityOnly,
                         measureDelay = {
                             runInterruptible {
@@ -66,8 +67,9 @@ class RealPingWorkerService(
                             }
                         },
                         lookupQuality = { qualityProbe.lookup(guid) },
+                        includeQuality = checkIpQuality && !onlyTcp && !pingOnly,
+                        onEvent = onEvent,
                     )
-                    onEvent(result)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {

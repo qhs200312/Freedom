@@ -101,8 +101,11 @@ New verification files:
 
 ## Release hardening
 
-Node quality is queried explicitly from a node's More menu using "Test IP
-quality". Ordinary connection, ping and subscription tests never query it.
+Explicit real-connection tests emit latency first, then query reachable nodes'
+IP quality. Ping, TCP-only and automatic subscription tests never query quality.
+The list's More menu replaces "Find selected node in list" with "Test IP quality",
+which tests the current visible list, including search filtering. Each node's
+More menu also supports testing only that node's quality.
 Quality-only results update only the quality field, preserving stored latency.
 The foreground test service provides progress, cancellation and teardown;
 quality-only tests cannot trigger subscription auto-delete or auto-sort.

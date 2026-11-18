@@ -260,6 +260,7 @@ class MainViewModel(
             MainAction.RefreshExitLocation -> refreshIPLocation(_uiState.value.isRunning)
             MainAction.TestAllServers -> testAllRealPing(pingOnly = true)
             MainAction.TestRealAllServers -> testAllRealPing()
+            MainAction.TestAllIpQuality -> testAllRealPing(ipQualityOnly = true)
             is MainAction.TestNodeIpQuality -> testNodeIpQuality(action.guid)
             MainAction.CancelTesting -> cancelAllPing()
             MainAction.RemoveAllServers -> removeAllServerAsync()
@@ -872,11 +873,15 @@ class MainViewModel(
         }
     }
 
-    fun testAllRealPing(onlyTcp: Boolean = false, pingOnly: Boolean = false) {
+    fun testAllRealPing(
+        onlyTcp: Boolean = false,
+        pingOnly: Boolean = false,
+        ipQualityOnly: Boolean = false,
+    ) {
         dataSource.cancelAllPing()
         val groupId = uiState.value.selectedGroupId
         val servers = currentServers()
-        dataSource.clearAllTestDelayResults(servers.map { it.guid })
+        if (!ipQualityOnly) dataSource.clearAllTestDelayResults(servers.map { it.guid })
         if (servers.isEmpty()) {
             _uiState.update { it.copy(isTesting = false) }
             return
@@ -885,7 +890,10 @@ class MainViewModel(
         _uiState.update {
             it.copy(
                 isTesting = true,
-                statusText = dataSource.getString(R.string.connection_test_testing)
+                statusText = dataSource.getString(
+                    if (ipQualityOnly) R.string.node_ip_quality_testing
+                    else R.string.connection_test_testing
+                )
             )
         }
         viewModelScope.launch(ioDispatcher) {
@@ -894,9 +902,11 @@ class MainViewModel(
                 TestServiceMessage(
                     key = AppConfig.MSG_MEASURE_CONFIG_START,
                     subscriptionId = groupId,
-                    serverGuids = if (keywordFilter.isNotEmpty()) servers.map { it.guid } else emptyList(),
+                    serverGuids = servers.map { it.guid },
                     onlyTcp = onlyTcp,
                     pingOnly = pingOnly,
+                    ipQualityOnly = ipQualityOnly,
+                    checkIpQuality = !ipQualityOnly && !onlyTcp && !pingOnly,
                 )
             )
         }
